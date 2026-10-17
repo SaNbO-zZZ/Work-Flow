@@ -1,0 +1,768 @@
+"""流水线执行器：选题与资料 → 写逐字稿 → 配音 → 配素材与粗剪 → 合成与QA。
+
+没注册的步骤仍走 server._not_ready。
+耗时的同步活（剪映界面、语音识别、ffmpeg）放到线程里跑，线程里自己开数据库连接。
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import shutil
+import subprocess
+import time
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from . import (aicover, codex_runner, compose, config, db, drive, edit, episodes, jianying, lessons, narration, overlays,
+               qa_checks, ratchet, research, script, sourcing, subtitles, versions, voice_post)
+from . import qa_review as ai_qa
+from .events import broker, notify
+from .scheduler import NeedsHuman, StepDeferred, StepNotReady
+
+log = logging.getLogger("hermes.steps")
+BJ = ZoneInfo("Asia/Shanghai")
+
+ASK_TIMEOUT = 60          # 开始前的确认框多久没人点就自动开始
+LATER_SECONDS = 600       # 点"稍后"后多久再问
+MANUAL_POLL = 120         # 等手动配音时多久看一次剪映草稿目录
+SETTLE_SECONDS = 30       # 草稿里的配音文件这么久没变才算生成完
+TAG_POLL = 120            # D3 等素材建指纹、向量、打标时多久看一次
+CODEX_TIMEOUT = 1200
+SOURCE = "配音来源.json"  # 03_配音/ 下记录配音是怎么来的，等手动时也靠它续上
+MANIFEST = "素材清单.json"  # 04_素材/ 下本期用到的素材编号
+RESOURCE_REQ = "重找请求.json"  # 04_素材/ 下“重跑找素材”按钮留的请求，只对写入时的那一轮 D2 有效
+
+CODEX_PROMPT = """用电脑操作工具（computer use）在这台 Mac 上操作「剪映专业版」，完成一次文本配音。应用必须用完整路径 /Applications/VideoFusion-macOS.app 连接，不使用有歧义的 bundle ID。只做下面这些事：
+
+1. 切到剪映专业版。点菜单「文件 → 新建草稿」；如果弹出确认框，点「确认」。
+2. 在新草稿里点左上的「字幕」→ 左侧「新建字幕」→「手动写字幕」，会打开「智能文案」窗口。
+3. 用 cua 的 paste 粘贴下方待配音全文，不要改动文字。
+4. 点「配音选择」，选音色「{voice}」。先查收藏；热门没有时查看分类和滚动列表，热血解说员本次实测位于「超仿真」。以实际界面为准，不得换用其他音色。截图确认窗口底部显示的是这个音色，再点「添加到轨道」。
+5. 等「自动拆句中」之类的进度框消失、时间线上出现配音轨道，就结束。
+
+不要导出、不要删除或改动其他草稿、不要关闭剪映、不要碰剪映以外的应用。
+完成后只回复一行：成功，或者"失败：原因"。
+
+待配音全文：
+{text}"""
+
+
+# ---------- 小工具 ----------
+
+def _dir(ep) -> Path:
+    return Path(ep["folder"])
+
+
+def _setting(conn, key: str, default: str) -> str:
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row and row["value"] not in (None, "") else default
+
+
+def _say(conn, episode_id: int, text: str) -> None:
+    conn.execute("INSERT INTO messages(episode_id, role, content, created_at) VALUES (?, 'system', ?, ?)",
+                 (episode_id, text, db.now()))
+    broker.publish("*", "refresh", {"episode_id": episode_id})
+
+
+def _card(conn, episode_id: int, card: dict, text: str) -> None:
+    """会话卡片（第 3 批）：同类型同一轮（run）已有卡片就原地更新，不再另发一句。text 是没有卡片时的文字说明。"""
+    old = versions.find_card(conn, episode_id, card["type"], card["run"]) if "run" in card else None
+    if old:
+        versions.update_card(conn, old[0], card, text)
+    else:
+        versions.add_card(conn, episode_id, card, text)
+    broker.publish("*", "refresh", {"episode_id": episode_id})
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+async def _thread(fn, *args, **kw):
+    """线程里跑同步函数；fn 的第一个参数是线程自己的数据库连接。"""
+    def call():
+        conn = db.connect()
+        try:
+            return fn(conn, *args, **kw)
+        finally:
+            conn.close()
+    return await asyncio.to_thread(call)
+
+
+# ---------- 剪映生成配音（三级：脚本 → Codex 操作界面 → 通知用户手动） ----------
+
+async def _ask_start(title: str) -> bool:
+    """弹确认框，用户点"稍后"返回 False；没人点或弹不出来都按开始。"""
+    text = f"马上要用剪映给「{title}」配音，大约要占用电脑 3 分钟，期间请不要动鼠标和键盘。"
+    script = (f"display dialog {json.dumps(text, ensure_ascii=False)} with title \"F1 Harness\" "
+              f"buttons {{\"稍后\", \"开始\"}} default button \"开始\" giving up after {ASK_TIMEOUT}")
+    try:
+        proc = await asyncio.create_subprocess_exec("/usr/bin/osascript", "-e", script,
+                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, _ = await asyncio.wait_for(proc.communicate(), ASK_TIMEOUT + 30)
+    except Exception as e:
+        log.warning("确认框没弹出来，直接开始：%s", e)
+        return True
+    return "稍后" not in out.decode(errors="replace")
+
+
+def _new_audio_drafts(before: set[str], since: float | None = None) -> list[Path]:
+    """before 之后新出现、且已有配音文件的草稿，文件多的在前。
+    给了 since（时间戳）时，旧草稿里 since 之后才生成的配音也算：用户常在脚本建好、已贴字幕的草稿里直接朗读。"""
+    def fresh(d: Path) -> bool:
+        files = jianying._audio_files(d)
+        if not files:
+            return False
+        return d.name not in before or (since is not None and max(f.stat().st_mtime for f in files) > since)
+    drafts = [d for d in (jianying.DRAFTS_ROOT / n for n in jianying._drafts()) if fresh(d)]
+    return sorted(drafts, key=lambda d: -len(jianying._audio_files(d)))
+
+
+def _settled(draft: Path) -> bool:
+    files = jianying._audio_files(draft)
+    return bool(files) and time.time() - max(f.stat().st_mtime for f in files) >= SETTLE_SECONDS
+
+
+def _copy_audio(draft: Path, raw: Path) -> int:
+    raw.mkdir(parents=True, exist_ok=True)
+    files = jianying._audio_files(draft)
+    for f in files:
+        shutil.copyfile(f, raw / f.name)
+    return len(files)
+
+
+async def _by_codex(conn, ep, task, text: str, voice: str, raw: Path, logs: Path) -> str:
+    from . import computer_use_runner
+    before = jianying._drafts()
+    model, effort = config.ROLE_MODELS["配音操作"]
+    try:  # 先把剪映窗口摆进主屏幕，Codex 才看得到弹出的确认框
+        await asyncio.to_thread(jianying.front)
+    except Exception as e:  # noqa: BLE001 — 摆不好也交给 Codex 自己处理
+        log.warning("交给 Codex 前摆放剪映窗口失败：%s", e)
+    result = await computer_use_runner.run(CODEX_PROMPT.format(voice=voice, text=text), model, effort,
+                                          logs / "codex配音", timeout=CODEX_TIMEOUT)
+    codex_runner.record_usage(conn, result, model=model, effort=effort, episode_id=ep["id"], task_id=task["id"])
+    if "失败：" in result.message or "失败:" in result.message:
+        raise RuntimeError(result.message.strip()[-1500:])
+    end = time.monotonic() + 180
+    while True:
+        drafts = await asyncio.to_thread(_new_audio_drafts, before)
+        if drafts and await asyncio.to_thread(_settled, drafts[0]):
+            break
+        if time.monotonic() > end:
+            raise RuntimeError(f"Codex 回复「{result.message.strip()[:200]}」，但没找到新生成的配音")
+        await asyncio.sleep(5)
+    n = await asyncio.to_thread(_copy_audio, drafts[0], raw)
+    log.info("Codex 操作剪映配音完成：草稿 %s，%d 个文件", drafts[0].name, n)
+    # Codex 路径保留草稿供复核，不在后台改用另一套界面工具清理。
+    return drafts[0].name
+
+
+async def voice_generate(task, ep) -> dict:
+    conn = db.connect()
+    try:
+        d = _dir(ep) / "03_配音"
+        raw, logs = d / "raw", _dir(ep) / "logs"
+        voice = _setting(conn, "voice.name", jianying.DEFAULT_VOICE)
+        src = _read_json(d / SOURCE)
+
+        # 第三级续上：已通知用户手动配音，看剪映里有没有新生成好的配音
+        if src.get("method") == "手动" and src.get("stage_run") == ep["stage_run"] and not src.get("draft"):
+            since = datetime.fromisoformat(src["since"]).timestamp() if src.get("since") else None
+            drafts = await asyncio.to_thread(_new_audio_drafts, set(src["before"]), since)
+            if not drafts or not await asyncio.to_thread(_settled, drafts[0]):
+                raise StepDeferred(MANUAL_POLL, "等你在剪映里手动生成配音")
+            shutil.rmtree(raw, ignore_errors=True)
+            n = await asyncio.to_thread(_copy_audio, drafts[0], raw)
+            info = {"method": "手动", "stage_run": ep["stage_run"], "voice": voice, "draft": drafts[0].name, "files": n}
+            _write_json(d / SOURCE, info)
+            _say(conn, ep["id"], f"收到你在剪映里生成的配音（草稿 {drafts[0].name}，{n} 段），接着做后处理。")
+            return info
+
+        script = (_dir(ep) / "02_文案" / "逐字稿.md").read_text(encoding="utf-8")
+        prepared = narration.prepare(script, conn)
+        narration.write(prepared, d)
+        if prepared.warnings:
+            _say(conn, ep["id"], "配音稿提醒：" + "；".join(prepared.warnings))
+
+        if not await _ask_start(ep["title"]):
+            raise StepDeferred(LATER_SECONDS, "用户点了稍后")
+
+        shutil.rmtree(raw, ignore_errors=True)
+        try:
+            res = await asyncio.to_thread(jianying.generate, prepared.text, raw, logs / "剪映配音", voice=voice)
+            info = {"method": "剪映脚本", "draft": res["draft"], "files": len(res["files"])}
+        except ValueError:
+            raise
+        except Exception as e1:
+            log.warning("剪映脚本失败，换 Codex：%s", e1)
+            _say(conn, ep["id"], f"剪映脚本没走通（{str(e1)[:200]}），改让 Codex 操作剪映。")
+            try:
+                shutil.rmtree(raw, ignore_errors=True)
+                info = {"method": "Codex", "draft": await _by_codex(conn, ep, task, prepared.text, voice, raw, logs)}
+                info["files"] = len(list(raw.iterdir()))
+            except Exception as e2:
+                log.warning("Codex 操作剪映也失败：%s", e2)
+                before = sorted(jianying._drafts())
+                _write_json(d / SOURCE, {"method": "手动", "stage_run": ep["stage_run"], "before": before,
+                                          "since": db.now()})
+                msg = (f"剪映自动配音两种办法都没成功（{str(e2)[:200]}）。请你手动配一下："
+                       f"在剪映新建草稿 → 字幕 → 新建字幕 → 手动写字幕，粘贴 03_配音/配音稿.txt 的全文，"
+                       f"音色选「{voice}」，点添加到轨道。生成完我会自动发现并接着做，流程不用你再点。")
+                _say(conn, ep["id"], msg)
+                notify("F1 Harness · 需要你手动配音", f"{ep['title']}：剪映自动配音没成功，请手动生成", ep["id"])
+                raise StepDeferred(MANUAL_POLL, "等你在剪映里手动生成配音")
+        info |= {"stage_run": ep["stage_run"], "voice": voice}
+        _write_json(d / SOURCE, info)
+        return info
+    finally:
+        conn.close()
+
+
+# ---------- 配音后处理 ----------
+
+def _voice_post(conn, ep) -> dict:
+    d = _dir(ep) / "03_配音"
+    speed = float(_setting(conn, "voice.speed", "1.3"))
+    if _setting(conn, "voice.speed_method", "程序加速") != "程序加速":
+        speed = 1.0   # 剪映里已经调过速
+    gap = float(_setting(conn, "voice.gap", "0.5"))
+    res = voice_post.process(d, speed=speed, gap=gap)
+    cues = subtitles.build(res["segments"])
+    subtitles.write_json(cues, d / "字幕.json")
+    subtitles.write_srt(cues, d / "字幕.srt")
+    src = _read_json(d / SOURCE)
+    conn.execute(
+        "INSERT INTO voice_takes(episode_id, stage_run, method, voice, draft, raw_dir, audio_path, speed, duration, "
+        "align_path, issues, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (ep["id"], ep["stage_run"], src.get("method") or "手动", src.get("voice") or _setting(conn, "voice.name", ""),
+         src.get("draft"), str(d / "raw"), str(d / "配音.wav"), speed, res["duration"], str(d / "对齐.json"),
+         json.dumps(res["issues"], ensure_ascii=False), db.now()))
+    kinds = {}
+    for i in res["issues"]:
+        kinds[i["kind"]] = kinds.get(i["kind"], 0) + 1
+    note = "、".join(f"{k} {v} 处" for k, v in kinds.items()) or "没发现读错、停顿和语速问题"
+    run = ep["stage_run"]
+    rel = versions.snapshot_run(ep, f"配音-r{run}", ["03_配音/试听.mp3"])
+    _card(conn, ep["id"], {"type": "voice", "run": run, "duration": res["duration"], "cues": len(cues), "kinds": kinds,
+                           "issues": [{k: i.get(k) for k in ("at", "kind", "detail")} for i in res["issues"][:200]],
+                           "file": f"{rel}/03_配音/试听.mp3" if rel else None},
+          f"配音做好了：{res['duration']:.0f} 秒，{len(cues)} 条字幕；{note}。")
+    return {"duration": res["duration"], "segments": len(res["segments"]), "cues": len(cues), "issues": kinds}
+
+
+async def voice_post_step(task, ep) -> dict:
+    return await _thread(_voice_post, ep)
+
+
+# ---------- 配素材与粗剪 ----------
+
+def asset_ids(conn, ep) -> list[int]:
+    data = _read_json(_dir(ep) / "04_素材" / MANIFEST)
+    return [int(i) for i in data.get("asset_ids") or []] or edit.episode_assets(conn, ep["id"])
+
+
+def request_resource(conn, episode_id: int, note: str = "") -> int:
+    """网页“重跑找素材”：退回配素材与粗剪（episodes.resource），并留下本轮 D2 必须让 GPT 重找的请求。"""
+    run = episodes.resource(conn, episode_id, note)
+    ep = episodes.get(conn, episode_id)
+    _write_json(_dir(ep) / "04_素材" / RESOURCE_REQ, {"stage_run": run, "note": note.strip(), "at": db.now()})
+    _say(conn, episode_id, "收到“重跑找素材”：退回配素材与粗剪，本轮找素材一定会联网重找"
+                           + (f"（要求：{note.strip()}）" if note.strip() else "") + "。")
+    return run
+
+
+def _resource_redo(ep, redo: str | None) -> tuple[bool, str | None]:
+    """本轮有“重跑找素材”请求时强制重找，把按钮里写的要求并进重找意见。"""
+    req = _read_json(_dir(ep) / "04_素材" / RESOURCE_REQ)
+    if req.get("stage_run") != ep["stage_run"]:
+        return False, redo
+    note = req.get("note") or ""
+    if not redo:
+        return True, f"用户点了“重跑找素材”：{note or '全片重新找画面'}"
+    return True, redo if not note or note in redo else f"{redo}\n用户点“重跑找素材”时补充：{note}"
+
+
+async def find_assets(task, ep) -> dict:
+    conn = db.connect()
+    try:
+        model, effort = _model(task, "找素材")
+        force, redo = _resource_redo(ep, ratchet.redo_text(conn, ep) or _redo_feedback(conn, ep["id"]))
+        run = ep["stage_run"]
+        # 一轮一张卡片：排进下载时先发，列出每条视频；下载完、找完都在同一张上更新（第 3 批）
+        out = await sourcing.run(conn, ep, model=model, effort=effort, task_id=task["id"],
+                                 feedback=_feedback(conn, ep["id"], ("G2", "G3"), "D2找素材"),
+                                 redo=redo, force=force,
+                                 say=lambda text: _card(conn, ep["id"], {"type": "sourcing", "run": run}, text))
+        rel = versions.snapshot_run(ep, f"找素材-r{run}", [f"04_素材/{MANIFEST}"])
+        _card(conn, ep["id"], {"type": "sourcing", "run": run, "done": True,
+                               "file": f"{rel}/04_素材/{MANIFEST}" if rel else None,
+                               "existing": out.get("existing"), "from_library": out.get("from_library"),
+                               "short": out.get("short_segments") or [], "notes": out.get("notes") or []},
+              sourcing.summary_text(out))
+        return out
+    finally:
+        conn.close()
+
+
+async def tag_assets(task, ep) -> dict:
+    conn = db.connect()
+    try:
+        ids = asset_ids(conn, ep)
+        bad = []
+        for aid in ids:
+            row = conn.execute("SELECT state, (SELECT COUNT(*) FROM asset_shots s WHERE s.asset_id=a.id) n "
+                               "FROM assets a WHERE id=?", (aid,)).fetchone()
+            if not row or row["state"] != "ready" or not row["n"]:
+                bad.append(aid)
+        if bad:
+            raise RuntimeError(f"这些素材还没入库打标：{bad}，请在素材库里处理后重试")
+        # 指纹、向量、打标没做完就剪，剪辑决策看不到标签、以文搜图也搜不到（素材库每 10 分钟补做一次）
+        from . import library
+        waiting = [a for a in library.pending(conn) if a in ids]
+        if waiting:
+            raise StepDeferred(TAG_POLL, f"等素材 {waiting} 建指纹、向量、打标")
+        return {"assets": len(ids)}
+    finally:
+        conn.close()
+
+
+async def graphics_step(task, ep) -> dict:
+    model, effort = _model(task, "图形")
+
+    def run(conn):
+        out = overlays.build(conn, ep, _feedback(conn, ep["id"], ("G2", "G3"), "D4图形与叠层"),
+                             model=model, effort=effort, task_id=task["id"])
+        # 一轮一张卡片放图（以前每张图一句话，第 3 批改）；图存进 09_版本，重做后上一轮还能看
+        run = ep["stage_run"]
+        layers = _read_json(_dir(ep) / "05_图形" / overlays.LAYER_FILE).get("overlays") or []
+        rel = versions.snapshot_run(ep, f"图形-r{run}", [f"05_图形/{overlays.LAYER_FILE}"] + [o["path"] for o in layers])
+        items, lines = [], []
+        for key, name, kind in (("section", "赛道简图", "赛道图"), ("schedule", "赛程卡", "赛程"), ("tyres", "轮胎策略图", "轮胎策略")):
+            if out.get(key):
+                s = out[key]
+                path = next((o["path"] for o in layers if o.get("kind") == kind), None)
+                items.append({"name": name, "start": s["start"], "end": s["end"], "how": s["how"],
+                              "path": f"{rel}/{path}" if rel and path else path})
+                lines.append(f"{name}叠在 {s['start']:.1f}–{s['end']:.1f} 秒（按{s['how']}定位）")
+        for s in out.get("data_panels") or []:              # 积分榜、数据卡（所有分支，可有多张）
+            items.append({"name": s["name"], "start": s["start"], "end": s["end"], "how": s["how"],
+                          "path": f"{rel}/{s['path']}" if rel else s["path"]})
+            lines.append(f"{s['name']}叠在 {s['start']:.1f}–{s['end']:.1f} 秒（按{s['how']}定位）")
+        if items or out["warnings"]:
+            _card(conn, ep["id"], {"type": "overlays", "run": run, "items": items, "warnings": out["warnings"]},
+                  "图形：" + "；".join(lines + [f"提醒：{w}" for w in out["warnings"]]) + "。")
+        return out
+    return await _thread(run)
+
+
+def _gate_feedback(conn, episode_id: int, gates: tuple[str, ...]) -> list[str]:
+    marks = ",".join("?" * len(gates))
+    return [r[0] for r in conn.execute(
+        f"SELECT feedback FROM gates WHERE episode_id=? AND gate IN ({marks}) AND state='rejected' "
+        "AND COALESCE(feedback, '') != '' ORDER BY id", (episode_id, *gates))]
+
+
+def _feedback(conn, episode_id: int, gates: tuple[str, ...], step: str) -> list[str]:
+    """用户打回意见 + 正在自动返工时 AI 评审给这一步的问题清单。"""
+    return _gate_feedback(conn, episode_id, gates) + ratchet.feedback_for(conn, episode_id, step)
+
+
+def _gate_feedback_at(conn, episode_id: int, gates: tuple[str, ...]) -> list[tuple[str, str]]:
+    marks = ",".join("?" * len(gates))
+    return [(r[0], r[1]) for r in conn.execute(
+        f"SELECT feedback, COALESCE(decided_at, created_at) FROM gates WHERE episode_id=? AND gate IN ({marks}) "
+        "AND state='rejected' AND COALESCE(feedback, '') != '' ORDER BY id", (episode_id, *gates))]
+
+
+def _redo_feedback(conn, episode_id: int) -> str | None:
+    """最近一次 G2/G3 打回意见；早于上次 D2 找素材完成的不算（按意见重找却一条没下载成功的那次不算完成）。"""
+    rows = _gate_feedback_at(conn, episode_id, ("G2", "G3"))
+    if not rows:
+        return None
+    text, at = rows[-1]
+    last = None
+    for finished, output in conn.execute("SELECT finished_at, output FROM tasks WHERE episode_id=? "
+                                         "AND step='D2找素材' AND state='succeeded'", (episode_id,)):
+        try:
+            out = json.loads(output or "")
+        except (TypeError, ValueError):
+            out = None
+        if isinstance(out, dict) and out.get("forced_by_feedback") is True and out.get("downloaded") == 0:
+            continue
+        if finished and (not last or finished > last):
+            last = finished
+    return text if not last or (at or "") > last else None
+
+
+def _model(task, role: str) -> tuple[str, str]:
+    model, effort = task["model"], task["effort"]
+    if not model or model == "程序":
+        return config.ROLE_MODELS[role]
+    return model, effort
+
+
+async def _gpt_step(task, ep, fn, role: str, gates: tuple[str, ...], step: str = "", **kw) -> dict:
+    conn = db.connect()
+    try:
+        model, effort = _model(task, role)
+        return await fn(conn, ep, model=model, effort=effort, task_id=task["id"],
+                        feedback=_feedback(conn, ep["id"], gates, step), **kw)
+    finally:
+        conn.close()
+
+
+async def research_facts(task, ep) -> dict:
+    return await _gpt_step(task, ep, research.collect, "资料", ("G0",))
+
+
+async def research_memes(task, ep) -> dict:
+    return await _gpt_step(task, ep, research.memes, "梗核实", ("G0",))
+
+
+async def topic_summary(task, ep) -> dict:
+    out = await _gpt_step(task, ep, research.topic, "总控", ("G0",))
+    out.pop("markdown")   # 选题全文在 G0 卡片里显示（第 3 批），不再发一大段文字
+    return out
+
+
+async def script_write(task, ep) -> dict:
+    out = await _gpt_step(task, ep, script.write, "文案", ("G1", "G3"), "写逐字稿")
+    if out.get("title"):
+        conn = db.connect()
+        try:
+            out["episode_title"] = episodes.set_publish_title(conn, ep["id"], out["title"])
+        finally:
+            conn.close()
+    return out
+
+
+async def edit_decide(task, ep) -> dict:
+    conn = db.connect()
+    try:
+        ids = asset_ids(conn, ep)
+        fb = _feedback(conn, ep["id"], ("G2", "G3"), "D6剪辑决策")
+        r = await edit.decide(conn, ep["id"], _dir(ep), asset_ids=ids, branch=ep["branch"], task_id=task["id"],
+                              feedback=fb)
+    finally:
+        conn.close()
+    saved = await _thread(lambda c: edit.save(c, ep["id"], _dir(ep), r["timeline"], stage_run=ep["stage_run"],
+                                              preview=False))
+    gaps = r["timeline"].get("gaps") or []
+    if gaps:   # 事件段缺本站画面、车队段缺这支车队的画面：G2 前告诉用户，可以“重跑找素材”补（2026-10-14、10-15 用户定）
+        conn = db.connect()
+        try:
+            _say(conn, ep["id"], f"剪辑决策报了 {len(gaps)} 处缺画面（这些段先用人物、维修区、赛道画面垫着）：\n" + "\n".join(
+                f"- 画面段 {g['segment']}（{int(g['start'] // 60):02d}:{int(g['start'] % 60):02d}）{g['need'] or '缺画面'}"
+                for g in gaps))
+        finally:
+            conn.close()
+    problems = r.get("problems") or []
+    if problems:   # 修了几轮还有硬问题：不渲染，转需人工（时间线和用量已存，可查看；2026-10-15）
+        raise NeedsHuman(f"剪辑决策修了 {r['attempts'] - 1} 轮仍有硬问题，没有渲染：" + "；".join(
+            f"{p['name']}：{(p.get('detail') or '')[:80]}" for p in problems).replace("\n", " "))
+    return {"clips": len(r["timeline"]["video"]), "attempts": r["attempts"], "warnings": r["warnings"],
+            "gaps": gaps, "hard_failed": saved["hard_failed"]}
+
+
+def _rough(conn, ep) -> dict:
+    d = _dir(ep) / "06_合成"
+    timeline = json.loads((d / "时间线.json").read_text(encoding="utf-8"))
+    video = compose.render(_dir(ep), timeline, d / "粗剪.mp4", preview=True, conn=conn)
+    conn.execute("UPDATE timelines SET video_path=? WHERE id=(SELECT id FROM timelines WHERE episode_id=? "
+                 "AND kind='粗剪' ORDER BY id DESC LIMIT 1)", (str(video), ep["id"]))
+    sheet = None
+    try:   # 镜头总览图给人核对画面段对象（2026-10-15）；出错不影响粗剪
+        sheet = str(compose.contact_sheet(_dir(ep), timeline, d / "分镜核对.jpg", conn=conn))
+    except Exception as e:
+        log.warning("分镜核对图没做出来：%s", e)
+    return {"preview": str(video), "sheet": sheet}
+
+
+async def rough_render(task, ep) -> dict:
+    return await _thread(_rough, ep)
+
+
+# ---------- 合成与QA ----------
+
+def title_and_desc(ep) -> tuple[str, str]:
+    """02_文案/标题和简介.txt：第一行标题，其余是简介；没有就用期标题。"""
+    p = _dir(ep) / "02_文案" / "标题和简介.txt"
+    if p.exists():
+        lines = p.read_text(encoding="utf-8").strip().splitlines()
+        if lines:
+            return lines[0].strip(), "\n".join(lines[1:]).strip()
+    return ep["title"], ""
+
+
+def _compose(conn, ep) -> dict:
+    d = _dir(ep)
+    title, desc = title_and_desc(ep)
+    _say(conn, ep["id"], f"成片开始渲染。标题：{title}" + (f"\n简介：{desc}" if desc else "\n简介：还没有（M6 写文案时生成）"))
+    notify("F1 Harness · 成片开始渲染", f"{ep['title']}：标题「{title}」", ep["id"])
+    tl_path = d / "06_合成" / "时间线.json"
+    timeline = json.loads(tl_path.read_text(encoding="utf-8"))
+    video = compose.render(d, timeline, d / "06_合成" / "成片.mp4", conn=conn)
+    conn.execute("INSERT INTO timelines(episode_id, stage_run, kind, path, video_path, created_at) "
+                 "VALUES (?,?,?,?,?,?)", (ep["id"], ep["stage_run"], "成片", str(tl_path), str(video), db.now()))
+    compose.covers(d, video, title, None, ep["branch"], ep["gp_label"], ep["series_no"])   # 模板封面先垫底
+    return {"video": str(video)}
+
+
+async def ai_cover(ep, note: str | None = None) -> dict:
+    """AI 重出横竖封面（用户 2026-10-13 定）；没做成就留着原来的封面，不挡流程。设置 cover.ai=0 时不做。"""
+    conn = db.connect()
+    try:
+        if _setting(conn, "cover.ai", "1") == "0":
+            return {"ok": False, "skipped": True}
+        title, desc = title_and_desc(ep)
+        # 一次一张封面卡片：做之前的封面和新封面都存进 09_版本，卡片里能切换对照（第 3 批）
+        run = datetime.now().strftime("%Y%m%d-%H%M%S")
+        files = ["06_合成/封面_横版.png", "06_合成/封面_竖版.png"]
+        before = versions.snapshot_run(ep, f"封面-{run}-前", files)
+        card = {"type": "cover", "run": run, "note": note, "running": True,
+                "before": [f"{before}/{f}" for f in files if (_dir(ep) / f).is_file()] if before else []}
+        _card(conn, ep["id"], card, "开始用 AI 做封面：先写封面文字、定主角、挑真人参考帧，再画横版和竖版底图、排字、看图验收，大约 8 分钟。"
+              + (f"\n意见：{note}" if note else ""))
+        try:
+            info = await aicover.generate(conn, ep, title, desc, note=note)
+        except Exception as e:  # noqa: BLE001  封面失败不挡流程，用户可在展示成果里重做
+            log.warning("AI 封面没做成：%s", e)
+            _card(conn, ep["id"], {**card, "running": False, "error": str(e)[:300]},
+                  f"AI 封面没做成，先用原来的封面（可在“展示成果”里点“重做封面”）：{e}")
+            return {"ok": False, "error": str(e)[:300]}
+        after = versions.snapshot_run(ep, f"封面-{run}", files + ["06_合成/封面说明.json"])
+        _card(conn, ep["id"], {**card, "running": False, "summary": aicover.summary(info),
+                               "after": [f"{after}/{f}" for f in files if (_dir(ep) / f).is_file()] if after else []},
+              aicover.summary(info))
+        return {"ok": any(r["ok"] for r in info["result"].values()), "info": info}
+    finally:
+        conn.close()
+
+
+async def compose_step(task, ep) -> dict:
+    out = await _thread(_compose, ep)
+    out["cover"] = (await ai_cover(ep)).get("ok", False)
+    out["deliveries"] = len(await _thread(compose.deliver, ep["id"], _dir(ep)))
+    return out
+
+
+def _hard_check(conn, ep) -> dict:
+    res = qa_checks.run(conn, ep["id"], _dir(ep))
+    bad = [i for i in res["items"] if i["hard"] and not i["ok"]]
+    soft = [i for i in res["items"] if not i["hard"] and not i["ok"]]
+    if bad:
+        text = "硬检查没全过：" + "；".join(f"{i['name']}（{i.get('detail') or ''}）" for i in bad)
+    else:
+        text = f"硬检查全部通过（{len(res['items'])} 项）"
+    if soft:
+        text += "。提醒：" + "；".join(f"{i['name']}（{i.get('detail') or ''}）" for i in soft)
+    _say(conn, ep["id"], text)
+    return {"passed": res["passed"], "failed": [i["name"] for i in bad]}
+
+
+async def hard_check(task, ep) -> dict:
+    return await _thread(_hard_check, ep)
+
+
+async def qa_review(task, ep) -> dict:
+    """硬检查没过就不调 AI；过了另开 Codex 线程看片评分，和本分支基线比一下；低于基线且次数没用完就自动返工，
+    否则汇总给 G3。"""
+    conn = db.connect()
+    try:
+        ratchet.close(conn, ep["id"])
+        d = _dir(ep)
+        hard = _read_json(d / "07_QA" / "硬检查.json")
+        issues = _read_json(d / "03_配音" / "对齐.json").get("issues") or []
+        summary = {"hard_passed": hard.get("passed"), "voice_issues": len(issues), "ai_review": None}
+        if not hard.get("passed"):
+            bad = [i["name"] for i in hard.get("items") or [] if i.get("hard") and not i.get("ok")]
+            summary["ai_skipped"] = ("硬检查没过（" + "、".join(bad) + "），不做 AI 评审") if bad else "没有硬检查结果，不做 AI 评审"
+            _write_json(d / "07_QA" / "质检汇总.json", summary)
+            _say(conn, ep["id"], summary["ai_skipped"] + "。")
+            return summary
+        model, effort = _model(task, "QA评审")
+        r = await ai_qa.review(conn, d / "06_合成" / "成片.mp4", episode_id=ep["id"], branch=ep["branch"],
+                               kind="成片", ep_dir=d, model=model, effort=effort, task_id=task["id"])
+        summary["ai_review"] = {k: r[k] for k in ("review_id", "rubric_version", "total", "summary", "issues")}
+        summary["ai_review"]["scores"] = {k: v["score"] for k, v in r["scores"].items()}
+        summary |= {"baseline": r["baseline"], "below_baseline": r["below_baseline"]}
+        summary["rework"], notes = ratchet.after_review(conn, ep, r)
+        _write_json(d / "07_QA" / "质检汇总.json", summary)
+        base = "" if r["baseline"] is None else (f"，低于{ep['branch']}基线 {r['baseline']:g}" if r["below_baseline"]
+                                              else f"，不低于{ep['branch']}基线 {r['baseline']:g}")
+        high = sum(1 for i in r["issues"] if i["severity"] == "高")
+        _say(conn, ep["id"], f"AI 评审 {r['total']:g} 分{base}；问题 {len(r['issues'])} 条（高 {high}）。{r['summary']}")
+        for n in notes:
+            _say(conn, ep["id"], n)
+        return summary
+    finally:
+        conn.close()
+
+
+# ---------- 审核页数据 ----------
+
+MEDIA = {
+    "试听": "03_配音/试听.mp3",
+    "粗剪": "06_合成/粗剪.mp4",
+    "成片": "06_合成/成片.mp4",
+    "横版封面": "06_合成/封面_横版.png",
+    "竖版封面": "06_合成/封面_竖版.png",
+}
+
+
+def media_path(ep, name: str) -> Path | None:
+    rel = MEDIA.get(name)
+    if not rel or not ep["folder"]:
+        return None
+    p = _dir(ep) / rel
+    return p if p.is_file() else None
+
+
+def review_data(conn, ep) -> dict:
+    d = _dir(ep) if ep["folder"] else None
+    if d is None:
+        return {}
+    align = _read_json(d / "03_配音" / "对齐.json")
+    rough = conn.execute("SELECT checks FROM timelines WHERE episode_id=? AND kind='粗剪' ORDER BY id DESC LIMIT 1",
+                         (ep["id"],)).fetchone()
+    title, desc = title_and_desc(ep)
+    qa = _read_json(d / "07_QA" / "质检汇总.json")
+    ai = _read_json(d / "07_QA" / "AI评审.json")
+    if not (qa.get("ai_review") or {}).get("review_id") or qa["ai_review"]["review_id"] != ai.get("review_id"):
+        ai = {}  # 只给本轮质检汇总对应的那次评审，硬检查没过时不显示旧结果
+    return {
+        # 值是修改时间，网页拿来做缓存版本号（重做封面后图要刷新）；没有文件是 0
+        "media": {k: int(p.stat().st_mtime) if (p := media_path(ep, k)) else 0 for k in MEDIA},
+        "voice": {"duration": align.get("duration"), "issues": align.get("issues") or []},
+        "rough_checks": json.loads(rough["checks"]) if rough and rough["checks"] else [],
+        "hard": _read_json(d / "07_QA" / "硬检查.json"),
+        "mix": _read_json(d / "06_合成" / "混音.json"),
+        "ai": ai,
+        "qa": qa,
+        "recalibrate": ratchet.alerts(conn, ep["id"]),
+        "title": title, "desc": desc, "full_title": ep["title"],
+        "delivery_dir": str(d / "08_交付") if (d / "08_交付").is_dir() else None,
+        "cover_note": aicover.summary(cv) if (cv := _read_json(d / "06_合成" / "封面说明.json")) else None,
+    }
+
+
+def after_gate(conn, ep, gate: str, decision: str, score: int | None) -> list[str]:
+    """用户关卡决定后：G3 通过抬基线、打分差太多提醒重新校准；ep 是决定前的行。"""
+    notes = ratchet.on_gate(conn, ep, gate, decision, score)
+    for n in notes:
+        _say(conn, ep["id"], n)
+    return notes
+
+
+# ---------- 上传Drive ----------
+
+DRIVE_WAIT = 1800  # 没连 Google Drive 时多久再看一次
+DRIVE_HINT = "Google Drive 还没连接：请到 设置 → 账号连接 里连接，连好后会自动接着上传"
+
+
+async def upload_step(task, ep) -> dict:
+    """整期文件夹传到 Drive 并逐个核对 MD5；核对通过后进归档倒计时，7 天后由定时任务清理本地。"""
+    conn = db.connect()
+    try:
+        eid = ep["id"]
+        arch = conn.execute("SELECT * FROM archives WHERE episode_id=?", (eid,)).fetchone()
+        if arch and arch["upload_state"] == "verified" and not arch["deleted_at"]:
+            return {"skipped": "已经上传并核对过", "drive_path": arch["drive_path"], "delete_after": arch["delete_after"]}
+        if not drive.configured():
+            if task["error"] != DRIVE_HINT:
+                _say(conn, eid, DRIVE_HINT + "。")
+                notify("F1 Harness · 需要连接 Google Drive", f"{ep['title']}：{DRIVE_HINT}", eid)
+            raise StepDeferred(DRIVE_WAIT, DRIVE_HINT)
+        last = task["attempts"] >= config.MAX_TASK_ATTEMPTS
+        tail = ("，已试 {} 次，这一期转为需人工；处理好后点“继续”会重新上传" if last else "，稍后自动重试（第 {} 次）")
+        try:
+            r = await drive.upload_episode(conn, eid)
+        except Exception as e:
+            _say(conn, eid, f"上传 Drive 没成功：{e}" + tail.format(task["attempts"]) + "。")
+            raise
+        if r["mismatch"]:
+            msg = f"上传后核对有 {len(r['mismatch'])} 个文件不一致：" + "；".join(r["mismatch"][:3])
+            _say(conn, eid, msg + tail.format(task["attempts"]) + "。")
+            raise RuntimeError(msg)
+        arch = conn.execute("SELECT delete_after FROM archives WHERE episode_id=?", (eid,)).fetchone()
+        when = datetime.fromisoformat(arch["delete_after"]).astimezone(BJ).strftime("%m-%d %H:%M")
+        _say(conn, eid, f"已上传到 Drive「{r['drive_path']}」并逐个核对：{r['files']} 个文件，共 {r['bytes'] / 1e9:.2f} GB。"
+                        f"本地文件 {drive.KEEP_DAYS} 天后（北京时间 {when}）自动清理，到期前一天提醒，可以延期。")
+        return {"files": r["files"], "bytes": r["bytes"], "drive_path": r["drive_path"],
+                "delete_after": arch["delete_after"]}
+    finally:
+        conn.close()
+
+
+async def lesson_summary(task, ep, *, force: bool = False) -> dict:
+    """G3 通过后总控总结经验笔记，等用户批准；做不成只提醒，不挡发布。force=用户手动补跑。"""
+    conn = db.connect()
+    try:
+        if not force and lessons.done(conn, ep["id"]):
+            return {"skipped": "本次 G3 后已经总结过"}
+        model, effort = _model(task, "总控")
+        try:
+            ids = await lessons.summarize(conn, ep, model=model, effort=effort, task_id=task["id"])
+        except codex_runner.QuotaExhausted:
+            raise
+        except Exception as e:
+            log.warning("经验总结失败：%s", e)
+            _say(conn, ep["id"], f"经验总结没做成（{str(e)[:200]}），不影响发布。")
+            return {"error": str(e)[:500]}
+        if ids:
+            _say(conn, ep["id"], f"总结了 {len(ids)} 条经验笔记，到「经验笔记」页批准后才会用到以后各期。")
+            notify("F1 Harness · 有新的经验笔记待批准", f"{ep['title']}：{len(ids)} 条", ep["id"])
+        else:
+            _say(conn, ep["id"], "这一期没有总结出新的经验笔记。")
+        return {"lessons": ids}
+    finally:
+        conn.close()
+
+
+async def lesson_rerun(episode_id: int) -> dict:
+    """用户在经验笔记页手动补做：不建任务、不动期的状态，已总结过也重跑；失败只提醒。"""
+    conn = db.connect()
+    try:
+        ep = conn.execute("SELECT * FROM episodes WHERE id=?", (episode_id,)).fetchone()
+        task = {"id": None, "step": "经验总结", "model": None, "effort": None}
+        try:
+            return await lesson_summary(task, ep, force=True)
+        except Exception as e:
+            log.warning("补做经验总结失败：%s", e)
+            why = "订阅额度已用完，额度恢复后再点一次" if isinstance(e, codex_runner.QuotaExhausted) else str(e)[:200]
+            _say(conn, episode_id, f"补做经验总结没做成（{why}）。")
+            notify("F1 Harness · 补做经验总结没做成", f"{ep['title']}：{why}", episode_id)
+            return {"error": str(e)[:500]}
+    finally:
+        conn.close()
+
+
+EXECUTORS = {
+    "D1资料与事实": research_facts,
+    "D5梗与出处": research_memes,
+    "总控汇总选题": topic_summary,
+    "写逐字稿": script_write,
+    "剪映生成配音": voice_generate,
+    "配音后处理": voice_post_step,
+    "D2找素材": find_assets,
+    "D3素材打标": tag_assets,
+    "D4图形与叠层": graphics_step,
+    "D6剪辑决策": edit_decide,
+    "粗剪渲染": rough_render,
+    "合成": compose_step,
+    "硬检查": hard_check,
+    "QA评审": qa_review,
+    "上传与核对": upload_step,
+    "经验总结": lesson_summary,
+}

@@ -1,0 +1,325 @@
+"""素材身份：哪站大奖赛、哪年、哪个赛段、什么类别，按标题和上传者认（2026-10-14 用户定：找素材先用本站画面）。
+
+站名记赛历里的英文站名（race_events.name_en），赛历里没有的往届站（马来西亚、土耳其等）记 HISTORIC 里的英文名。
+用户在网页上改过的（identity_manual=1）不再自动覆盖。
+"""
+import re
+import unicodedata
+from datetime import date, datetime
+
+from . import calendar, glossary, local_tags
+
+FIELDS = ("gp_event", "season", "session", "category")
+SESSIONS = ("正赛", "排位", "冲刺", "练习", "其他")
+CATEGORIES = ("比赛回放", "集锦", "车载", "车队运营", "官方运营", "赛道介绍", "其他")
+LONG_SECONDS = 20 * 60   # 标题写了赛段、又有 20 分钟以上的，按整场回放算
+
+# 车队官方频道（YouTube / B 站显示名），比较时忽略大小写和标点
+TEAM_CHANNELS = (
+    "Scuderia Ferrari", "Scuderia Ferrari HP", "Mercedes-AMG PETRONAS F1 Team", "Mercedes-AMG PETRONAS Formula One Team",
+    "McLaren", "McLaren F1 Team", "Oracle Red Bull Racing", "Red Bull Racing", "Aston Martin Aramco F1 Team",
+    "Aston Martin Aramco Formula One Team", "Aston Martin F1 Team", "Williams Racing", "Atlassian Williams Racing",
+    "BWT Alpine F1 Team", "Alpine F1 Team", "MoneyGram Haas F1 Team", "TGR Haas F1 Team", "Haas F1 Team",
+    "Visa Cash App Racing Bulls F1 Team", "Visa Cash App RB F1 Team", "Racing Bulls", "Stake F1 Team Kick Sauber",
+    "Sauber F1 Team", "Audi F1 Team", "Audi Revolut F1 Team", "Cadillac F1 Team", "Cadillac Formula 1 Team",
+)
+F1_CHANNELS = ("FORMULA 1", "F1")
+# 比赛实况：这些类别并且是这些赛段的（2026-10-14 用户定：比赛实况只收 F1 官方 YouTube 频道的集锦）
+RACE_CATEGORIES = ("比赛回放", "集锦", "车载")
+RACE_SESSIONS = ("正赛", "排位", "冲刺", "练习")
+# 车队频道名里认车队的关键字 → 译名表（glossary.BUILTIN）里的英文车队名；译名表里没有的在 _TEAM_ZH 补中文
+_TEAM_KEYS = (("racingbulls", "Racing Bulls"), ("visacashapprb", "Racing Bulls"), ("ferrari", "Ferrari"),
+              ("mercedes", "Mercedes"), ("mclaren", "McLaren"), ("redbull", "Red Bull Racing"),
+              ("astonmartin", "Aston Martin"), ("williams", "Williams"), ("alpine", "Alpine"), ("haas", "Haas F1 Team"),
+              ("sauber", "Sauber"), ("audi", "Audi"), ("cadillac", "Cadillac"))
+_TEAM_ZH = {"Racing Bulls": "Racing Bulls", "Sauber": "索伯"}
+# 口播里对车队的叫法（中文名本身之外）；英文不分大小写
+TEAM_ALIASES = {
+    "法拉利": ("Ferrari", "跃马"), "梅赛德斯": ("梅奔", "奔驰", "Mercedes"), "迈凯伦": ("木瓜", "McLaren"),
+    "红牛": ("Red Bull",), "Racing Bulls": ("小红牛", "RB车队"), "阿斯顿·马丁": ("阿斯顿马丁", "阿斯顿", "Aston Martin"),
+    "威廉姆斯": ("Williams",), "Alpine": ("阿尔派",), "哈斯": ("Haas",), "索伯": ("奥迪", "Sauber", "Audi"),
+    "奥迪": ("索伯", "Audi", "Sauber"), "凯迪拉克": ("Cadillac",),
+}
+
+# 赛历里没有的往届站：英文站名 → 标题里可能出现的写法
+HISTORIC = {
+    "Malaysian Grand Prix": ("马来西亚", "malaysia", "sepang", "雪邦"),
+    "Turkish Grand Prix": ("土耳其", "turkey", "turkish", "istanbul", "伊斯坦布尔"),
+    "Portuguese Grand Prix": ("葡萄牙", "portugal", "portuguese", "portimao", "波尔蒂芒"),
+    "German Grand Prix": ("德国", "germany", "german", "hockenheim", "霍根海姆"),
+    "French Grand Prix": ("法国", "france", "french", "paulricard", "保罗里卡德"),
+    "Russian Grand Prix": ("俄罗斯", "russia", "russian", "sochi", "索契"),
+    "Korean Grand Prix": ("韩国", "korea", "korean", "yeongam", "灵岩"),
+    "Indian Grand Prix": ("印度", "india", "buddh"),
+    "Emilia Romagna Grand Prix": ("艾米利亚", "emiliaromagna", "imola", "伊莫拉"),
+    "Styrian Grand Prix": ("施蒂利亚", "styria"),
+    "Eifel Grand Prix": ("艾菲尔", "eifel"),
+    "Tuscan Grand Prix": ("托斯卡纳", "tuscan", "mugello", "穆杰罗"),
+    "Sakhir Grand Prix": ("萨基尔大奖赛", "sakhirgrandprix"),
+    "70th Anniversary Grand Prix": ("70周年", "70thanniversary"),
+}
+
+_YEAR = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
+_NOTE = re.compile(r"（[^）]*）|\([^)]*\)")
+_CATALUNYA = re.compile(r"加泰罗尼亚|catalunya|catalonia", re.I)
+_TESTING = re.compile(r"季前测试|测试日|\btesting\b|\btest day\b", re.I)
+_REPLAY = re.compile(r"回放|重播|完整版|全场|full race|replay|full session", re.I)
+_ONBOARD = re.compile(r"车载|单圈|onboard|on-board|pole lap|pole position lap|hot lap", re.I)
+_HIGHLIGHT = re.compile(r"集锦|精华|高光|highlights?\b", re.I)
+_CIRCUIT = re.compile(r"赛道(介绍|解析|指南|巡礼)|circuit guide|track guide|circuit official video", re.I)
+_OPS = re.compile(r"无线电|幕后|采访|发布会|车库|围场|vlog|radio|behind the scenes|interview|press conference|garage"
+                  r"|paddock|unseen|mic'?d up|grill the grid", re.I)
+_POLE = re.compile(r"\bpole\b|杆位", re.I)
+
+
+def _plain(text: str | None) -> str:
+    s = unicodedata.normalize("NFKD", text or "")
+    return re.sub(r"[^0-9a-z\u4e00-\u9fff]", "", "".join(c for c in s if not unicodedata.combining(c)).lower())
+
+
+_TEAMS = {_plain(n) for n in TEAM_CHANNELS}
+_F1 = {_plain(n) for n in F1_CHANNELS}
+
+
+def _year(title: str) -> int | None:
+    m = _YEAR.search(re.sub(r"(?i)F1(?=20\d\d)", "F1 ", title))
+    y = int(m.group(1)) if m else None
+    return y if y and 2000 <= y <= date.today().year + 1 else None
+
+
+def _has_calendar(conn, season: int) -> bool:
+    return conn.execute("SELECT 1 FROM race_events WHERE season=? LIMIT 1", (season,)).fetchone() is not None
+
+
+def _historic(text: str) -> str | None:
+    q = _plain(text)
+    return next((name for name, keys in HISTORIC.items() if any(k in q for k in keys)), None)
+
+
+def _calendar(conn, text: str, season: int | None) -> str | None:
+    if season is not None and _has_calendar(conn, season):
+        ev = calendar.find_event(conn, text, season, today=date(season, 7, 1))
+    else:
+        ev = calendar.find_event(conn, text)
+    return ev["name_en"] if ev else None
+
+
+def event_name(conn, text: str | None, season: int | None = None) -> str | None:
+    """文字里的站名 → 英文站名。当年有赛历先查当年；没有赛历的年份先看往届站；没写年份先查赛历。"""
+    text = re.sub(r"F1\s*中国|F1China", " ", text or "", flags=re.I)
+    if not text.strip():
+        return None
+    if _CATALUNYA.search(text):
+        # 2026 起加泰罗尼亚赛道办的是巴塞罗那大奖赛，之前叫西班牙大奖赛
+        if season is not None and _has_calendar(conn, season):
+            row = conn.execute("SELECT name_en FROM race_events WHERE season=? AND location='Barcelona'",
+                               (season,)).fetchone()
+            if row:
+                return row[0]
+        if season is not None and season <= 2025:
+            return "Spanish Grand Prix"
+    if season is not None and _has_calendar(conn, season):
+        return _calendar(conn, text, season) or _historic(text)
+    if season is not None:
+        return _historic(text) or _calendar(conn, text, None)
+    return _calendar(conn, text, None) or _historic(text)
+
+
+def _session(title: str) -> str | None:
+    return local_tags._title_session(title) or ("排位" if _POLE.search(title) else None)
+
+
+def _category(title: str, uploader: str | None, duration, session: str | None) -> str:
+    who = _plain(uploader)
+    if _TESTING.search(title):
+        return "其他"
+    if _REPLAY.search(title):
+        return "比赛回放"
+    if _ONBOARD.search(title):
+        return "车载"
+    if _HIGHLIGHT.search(title):
+        return "集锦"
+    if session and duration and duration >= LONG_SECONDS:
+        return "比赛回放"
+    if _CIRCUIT.search(title) or "circuit" in who:
+        return "赛道介绍"
+    if who in _TEAMS:
+        return "车队运营"
+    if who in _F1:
+        # F1 官方只写了赛段的短片就是那一节的集锦；幕后、无线电、采访之类算官方运营
+        return "集锦" if session and not _OPS.search(title) else "官方运营"
+    return "其他"
+
+
+def is_race_footage(category: str | None, session: str | None) -> bool:
+    """比赛实况：比赛回放、集锦、车载，并且是正赛、排位、冲刺、练习。"""
+    return category in RACE_CATEGORIES and session in RACE_SESSIONS
+
+
+def official_f1(uploader: str | None) -> bool:
+    return bool(uploader) and _plain(uploader) in _F1
+
+
+def team_of(asset) -> str | None:
+    """上传者是车队官方账号时给车队中文名（译名表内置写法），不是返回 None。"""
+    who = _plain(_get(asset, "uploader"))
+    if not who or who not in _TEAMS:
+        return None
+    en = next((en for key, en in _TEAM_KEYS if key in who), None)
+    if not en:
+        return None
+    return _TEAM_ZH.get(en) or glossary.BUILTIN["车队"].get(en) or en
+
+
+def team_aliases(team: str | None) -> tuple[str, ...]:
+    """口播里认这支车队的写法：中文名 + 昵称 + 英文名。"""
+    return (team, *TEAM_ALIASES.get(team, ())) if team else ()
+
+
+def team_mentioned(team: str | None, text: str | None) -> bool:
+    """口播里讲到这支车队；别的车队叫法里含它的（小红牛里的红牛）先去掉再看。"""
+    low = (text or "").lower()
+    mine = [a.lower() for a in team_aliases(team)]
+    for other, names in TEAM_ALIASES.items():
+        if other != team:
+            for a in (other, *names):
+                a = a.lower()
+                if a not in mine and any(m in a for m in mine):
+                    low = low.replace(a, " ")
+    return any(m in low for m in mine)
+
+
+def identify(conn, title: str | None, uploader: str | None = None, duration=None) -> dict:
+    title = (title or "").strip()
+    season = _year(title)
+    session = _session(title)
+    category = _category(title, uploader, duration, session)
+    if session is None and category in ("比赛回放", "集锦"):
+        session = "正赛"
+    gp = None
+    if title and not _TESTING.search(title):
+        gp = event_name(conn, _NOTE.sub(" ", title), season) or event_name(conn, title, season)
+    return {"gp_event": gp, "season": season, "session": session or "其他", "category": category}
+
+
+def apply(conn, asset_id: int) -> dict | None:
+    """按标题算身份写库；用户改过的不动，返回库里现有的。"""
+    row = conn.execute("SELECT title, uploader, duration, identity_manual, gp_event, season, session, category "
+                       "FROM assets WHERE id=?", (asset_id,)).fetchone()
+    if not row:
+        return None
+    if row["identity_manual"]:
+        return {k: row[k] for k in FIELDS}
+    ident = identify(conn, row["title"], row["uploader"], row["duration"])
+    conn.execute("UPDATE assets SET gp_event=?, season=?, session=?, category=? WHERE id=?",
+                 (*(ident[k] for k in FIELDS), asset_id))
+    return ident
+
+
+def backfill(conn) -> int:
+    """还没算过身份的素材补算（category 为空即没算过），幂等。"""
+    ids = [r[0] for r in conn.execute("SELECT id FROM assets WHERE category IS NULL AND identity_manual=0")]
+    for aid in ids:
+        apply(conn, aid)
+    return len(ids)
+
+
+def set_manual(conn, asset_id: int, body: dict) -> dict:
+    """用户在网页上改身份：只改给了的字段，改完标 identity_manual=1。"""
+    row = conn.execute("SELECT gp_event, season, session, category FROM assets WHERE id=?", (asset_id,)).fetchone()
+    if not row:
+        raise KeyError(asset_id)
+    new = {k: row[k] for k in FIELDS}
+    if "season" in body:
+        s = body["season"]
+        if s in (None, ""):
+            new["season"] = None
+        elif isinstance(s, bool) or not str(s).isdigit() or not 1950 <= int(s) <= 2100:
+            raise ValueError("season 要是年份")
+        else:
+            new["season"] = int(s)
+    if "gp_event" in body:
+        g = body["gp_event"]
+        if g in (None, ""):
+            new["gp_event"] = None
+        elif not isinstance(g, str) or len(g) > 80:
+            raise ValueError("gp_event 要是站名")
+        elif not (name := event_name(conn, g, new["season"])):
+            raise ValueError(f"认不出这一站：{g}")
+        else:
+            new["gp_event"] = name
+    for key, allowed in (("session", SESSIONS), ("category", CATEGORIES)):
+        if key in body:
+            if body[key] not in allowed:
+                raise ValueError(f"{key} 只能是：{'、'.join(allowed)}")
+            new[key] = body[key]
+    conn.execute("UPDATE assets SET gp_event=?, season=?, session=?, category=?, identity_manual=1 WHERE id=?",
+                 (*(new[k] for k in FIELDS), asset_id))
+    return new | {"identity_manual": 1}
+
+
+def _get(row, key):
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None
+
+
+def episode_race(conn, ep) -> dict | None:
+    """复盘期讲的那一站：gp_label 查赛历，年份取期号前 8 位日期。其他分支、认不出的返回 None。"""
+    if _get(ep, "branch") != "复盘" or not _get(ep, "gp_label"):
+        return None
+    try:
+        day = datetime.strptime((_get(ep, "code") or "")[:8], "%Y%m%d").date()
+    except ValueError:
+        return None
+    # 元旦前后复盘上赛季最后一站时，当年赛历里没有，再看上一年
+    for season in (day.year, day.year - 1):
+        ev = calendar.find_event(conn, ep["gp_label"], season, today=day)
+        if ev:
+            return {"event": ev["name_en"], "season": season, "name_zh": ev["name_zh"] or ev["name_en"]}
+    return None
+
+
+def same_race(asset_row, race: dict | None) -> bool | None:
+    """站名和年份都对上 True；素材身份不全（认不出）None；对不上 False。"""
+    if not race:
+        return None
+    gp, season = _get(asset_row, "gp_event"), _get(asset_row, "season")
+    if gp and gp != race["event"]:
+        return False
+    if season is not None and season != race["season"]:
+        return False
+    if not gp or season is None:
+        return None
+    return True
+
+
+def label(row) -> str:
+    """网页和清单里显示的一行：哪站·哪年·赛段·类别。"""
+    parts = [_get(row, "gp_event") or "站名未知", str(_get(row, "season") or "年份未知"),
+             _get(row, "session") or "其他", _get(row, "category") or "其他"]
+    return " · ".join(parts)
+
+
+def station_zh(conn, gp_event: str) -> str:
+    """英文站名 → 中文站名：译名表（已审/建议），内置词典，往届站取第一个中文写法加“大奖赛”，都没有就用英文名。"""
+    name = glossary.zh(conn, "大奖赛", gp_event) or glossary.BUILTIN.get("大奖赛", {}).get(gp_event)
+    if name:
+        return name
+    key = (HISTORIC.get(gp_event) or ("",))[0]
+    if key and not key.isascii():
+        return key if key.endswith("大奖赛") else key + "大奖赛"
+    return gp_event
+
+
+def picture_credit(conn, asset) -> str | None:
+    """画面小字写画面是什么，不写来源网站、频道、标题（2026-10-14 用户定），如“2026 新加坡大奖赛正赛”；
+    赛段是其他/认不出的不写，没有年份只写站名，认不出站返回 None。"""
+    gp = _get(asset, "gp_event")
+    if not gp:
+        return None
+    session = _get(asset, "session")
+    text = station_zh(conn, gp) + (session if session in SESSIONS and session != "其他" else "")
+    season = _get(asset, "season")
+    return f"{season} {text}" if season else text

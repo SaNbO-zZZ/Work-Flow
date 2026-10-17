@@ -1,0 +1,12 @@
+{
+  "keep": [
+    "F1", "F2", "F3", "GP2", "GP3", "GP", "FIA", "FOM", "DRS", "ERS", "MGU-K", "MGU-H", "KERS",
+    "C1", "C2", "C3", "C4", "C5", "C6", "C1-C5", "C1-C6",
+    "Q1", "Q2", "Q3", "SQ1", "SQ2", "SQ3", "SC", "VSC", "DNF", "DNS", "DSQ", "TR",
+    "Multi 21"
+  ],
+  "say": {
+    "Motorsport.com": "Motorsport 网",
+    "The Race": "The Race 网站"
+  }
+}

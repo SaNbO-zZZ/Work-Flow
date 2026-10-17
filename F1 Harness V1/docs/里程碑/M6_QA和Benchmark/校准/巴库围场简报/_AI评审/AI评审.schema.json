@@ -1,0 +1,106 @@
+{
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "scores",
+  "total",
+  "issues",
+  "summary"
+ ],
+ "properties": {
+  "scores": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "item",
+     "score",
+     "reason"
+    ],
+    "properties": {
+     "item": {
+      "type": "string",
+      "enum": [
+       "事实准确",
+       "剪辑与节奏",
+       "开头吸引力",
+       "画面贴合度",
+       "文案可听性",
+       "规格合规"
+      ]
+     },
+     "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+     },
+     "reason": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "total": {
+   "type": "number"
+  },
+  "issues": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "at",
+     "item",
+     "severity",
+     "problem",
+     "fix",
+     "back_to"
+    ],
+    "properties": {
+     "at": {
+      "type": "string"
+     },
+     "item": {
+      "type": "string",
+      "enum": [
+       "事实准确",
+       "剪辑与节奏",
+       "开头吸引力",
+       "画面贴合度",
+       "文案可听性",
+       "规格合规"
+      ]
+     },
+     "severity": {
+      "type": "string",
+      "enum": [
+       "高",
+       "中",
+       "低"
+      ]
+     },
+     "problem": {
+      "type": "string"
+     },
+     "fix": {
+      "type": "string"
+     },
+     "back_to": {
+      "type": "string",
+      "enum": [
+       "写逐字稿",
+       "D2找素材",
+       "D6剪辑决策",
+       "D4图形与叠层",
+       "配音"
+      ]
+     }
+    }
+   }
+  },
+  "summary": {
+   "type": "string"
+  }
+ }
+}

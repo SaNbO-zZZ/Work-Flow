@@ -1,0 +1,116 @@
+"""画面段（2026-10-15 用户定）：配音对齐是一句一段，剪辑按句挑镜头会缺镜头、错位（第 18 期 94 句 GPT 只给 10 个镜头，
+勒克莱尔采访一直放到梅赛德斯那段）。先把相邻句子按讲的车队、车手和转场合成画面段，剪辑按画面段挑镜头。"""
+import json
+from collections import Counter
+
+from . import asset_identity
+
+BEAT_MAX = 12.0     # 画面段最长秒数，超了在句子边界切开
+TURN_MIN = 3.0      # 转场词开头的句子，当前画面段够这么长才切
+TURN_WORDS = ("先从", "说到", "再看", "再听", "最后", "接下来", "回到", "至于", "另外")
+
+
+def team_key(name) -> str | None:
+    """车队名或叫法 → TEAM_ALIASES 的键（不分大小写）；先认整名，再认名字里含的最长叫法（Red Bull Racing → 红牛）。"""
+    low = str(name or "").strip().lower()
+    if not low:
+        return None
+    for k, al in asset_identity.TEAM_ALIASES.items():
+        if low in (a.lower() for a in (k, *al)):
+            return k
+    hits = [(len(a), k) for k, al in asset_identity.TEAM_ALIASES.items() for a in (k, *al) if a.lower() in low]
+    return max(hits, key=lambda h: h[0])[1] if hits else None
+
+
+def driver_teams(conn, asset_ids=None) -> dict[str, str]:
+    """车手中文名 → 车队：只看单一车队的镜头标签，多数票；给了 asset_ids 只看这些素材，否则全库。"""
+    sql, args = "SELECT tags FROM asset_shots WHERE tags IS NOT NULL AND NOT split", []
+    if asset_ids is not None:
+        ids = [int(a) for a in asset_ids]
+        if not ids:
+            return {}
+        sql += f" AND asset_id IN ({','.join('?' * len(ids))})"
+        args = ids
+    votes: dict[str, Counter] = {}
+    for r in conn.execute(sql, args):
+        try:
+            t = json.loads(r["tags"]) if isinstance(r["tags"], str) else r["tags"]
+        except ValueError:
+            continue
+        if not isinstance(t, dict):
+            continue
+        teams = {team_key(x) for x in t.get("teams") or []} - {None}
+        if len(teams) != 1:
+            continue
+        team = teams.pop()
+        for d in t.get("drivers") or []:
+            if d:
+                votes.setdefault(str(d), Counter())[team] += 1
+    return {d: c.most_common(1)[0][0] for d, c in votes.items()}
+
+
+def subject(text: str, dmap: dict) -> tuple[list[str], list[str]]:
+    """口播讲到的车队（直接点名的 + 点到的车手所在车队）和车手（按出现先后）。"""
+    text = text or ""
+    teams = {team_key(k) for k in asset_identity.TEAM_ALIASES if asset_identity.team_mentioned(k, text)}
+    drivers = sorted((d for d in dmap if d and d in text), key=text.find)
+    teams |= {team_key(dmap[d]) for d in drivers}
+    return sorted(teams - {None}), drivers
+
+
+def _turn(text: str) -> bool:
+    t = (text or "").lstrip()
+    return t.startswith(TURN_WORDS) or "这边" in t[:8]
+
+
+def beats(segments: list[dict], duration: float, dmap: dict) -> list[dict]:
+    """对齐句子合成画面段：点名的车队和当前段不相干就另起一段；转场词开头（或前 8 个字有“这边”）且当前段够 TURN_MIN 秒
+    就另起；没点名车队的句子跟着当前段；当前段还没对象就接过这句的；一段不超过 BEAT_MAX 秒（只因太长切开的沿用原对象）。"""
+    from .edit import event_words, key_segment
+    groups: list[dict] = []
+    for seg in sorted(segments, key=lambda s: float(s["start"])):
+        text = seg.get("show") or seg.get("text") or ""
+        teams, drivers = subject(text, dmap)
+        cur = groups[-1] if groups else None
+        if cur is not None:
+            t0 = float(cur["sents"][0]["start"])
+            turn = _turn(text) and float(seg["start"]) - t0 >= TURN_MIN
+            other = bool(teams) and bool(cur["teams"]) and not set(teams) & cur["teams"]
+            if turn or other:
+                cur = None
+            elif float(seg["end"]) - t0 > BEAT_MAX:   # 只因太长切开：还在讲同一个对象，接着用
+                cur = {"sents": [], "teams": set(cur["teams"]), "drivers": list(cur["drivers"])}
+                groups.append(cur)
+        if cur is None:
+            cur = {"sents": [], "teams": set(), "drivers": []}
+            groups.append(cur)
+        cur["sents"].append(seg)
+        cur["teams"] |= set(teams)
+        cur["drivers"] += [d for d in drivers if d not in cur["drivers"]]
+    out = []
+    for k, g in enumerate(groups):
+        text = "".join(s.get("show") or s.get("text") or "" for s in g["sents"])
+        out.append({"i": k, "start": 0.0 if k == 0 else round(float(g["sents"][0]["start"]), 3),
+                    "end": round(float(groups[k + 1]["sents"][0]["start"]) if k + 1 < len(groups) else float(duration), 3),
+                    "sents": [s["i"] for s in g["sents"]], "text": text, "teams": sorted(g["teams"]),
+                    "drivers": g["drivers"], "key": key_segment(text), "event": event_words(text)})
+    return out
+
+
+def shot_teams(shot: dict, dmap: dict) -> set[str]:
+    """镜头里的车队：标签里的车队 + 标签车手所在车队 + 车队运营视频是哪支车队发的。"""
+    out = {team_key(t) for t in shot.get("teams") or []}
+    out |= {team_key(dmap[d]) for d in shot.get("drivers") or [] if d in dmap}
+    out.add(team_key(shot.get("team")))
+    return out - {None}
+
+
+def conflict(beat: dict, shot: dict, dmap: dict) -> bool:
+    """画面段有对象，镜头里有车队却没有一支是对象（讲梅赛德斯放勒克莱尔）。"""
+    st = shot_teams(shot, dmap)
+    return bool(beat.get("teams")) and bool(st) and not st & set(beat["teams"])
+
+
+def on_subject(beat: dict, shot: dict, dmap: dict) -> bool:
+    """镜头拍到画面段的对象（它的车手、车库、赛车或车队运营视频）。"""
+    return bool(beat.get("teams")) and bool(shot_teams(shot, dmap) & set(beat["teams"]))

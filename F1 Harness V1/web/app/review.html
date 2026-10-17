@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>关卡审核 · F1 Harness</title>
+<link rel="icon" type="image/png" href="/static/icon-64.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/extra.css">
+<link rel="stylesheet" href="/static/review.css">
+</head>
+<body class="review">
+<header><div><div class="code" id="code"></div><h1 id="title"></h1></div></header>
+<div class="wrap">
+  <div class="left" id="left"></div>
+  <div class="right" id="right"></div>
+</div>
+<footer>
+  <button class="btn primary" id="ok">通过</button>
+  <span id="backs"></span>
+  <textarea class="gate-note" id="note" rows="1" placeholder="意见（打回时必填）" style="flex:1; margin:0"></textarea>
+  <span class="hint" id="scoreLabel">你的打分（用于校准 AI）</span><input type="number" id="score" min="0" max="100" placeholder="0–100">
+</footer>
+<div id="toast" class="toast"></div>
+<script src="/static/aireview.js"></script>
+<script src="/static/cards.js"></script>
+<script src="/static/review.js"></script>
+</body>
+</html>

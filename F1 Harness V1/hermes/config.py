@@ -1,0 +1,62 @@
+import os
+from pathlib import Path
+
+# 映像内：代码、环境、数据库、提示词、技能；exFAT 上：每期的大文件
+CORE = Path(os.environ.get("HERMES_CORE", "/Volumes/HermesCore"))
+ROOT = Path(os.environ.get("HERMES_ROOT", "/Volumes/张三波个人硬盘/Codex/F1 Hermes V1"))
+
+DB_PATH = CORE / "data" / "hermes.db"
+LOG_DIR = CORE / "logs"
+FASTF1_CACHE = CORE / "cache" / "fastf1"
+HF_CACHE = CORE / "cache" / "huggingface"
+# 登录状态、rclone 配置只存本机，权限 0600
+SECRETS_DIR = CORE / "data" / "secrets"
+BILI_COOKIES = SECRETS_DIR / "bilibili_cookies.txt"
+RCLONE = CORE / "tools" / "bin" / "rclone"
+RCLONE_CONF = SECRETS_DIR / "rclone.conf"
+DRIVE_REMOTE = "hermes-drive"
+DRIVE_ROOT = "F1 Hermes"
+YTDLP = Path.home() / ".local" / "bin" / "yt-dlp"
+CLIP_MODEL = "OFA-Sys/chinese-clip-vit-base-patch16"
+SKILLS_DIR = CORE / "skills"
+PRODUCTIONS_DIR = ROOT / "productions"
+LIBRARY_DIR = ROOT / "素材库"          # 每个素材一个子文件夹：<asset_id>/（原片、关键帧、拼图、缩略图）
+BRAND_DIR = ROOT / "assets" / "brand"
+FONTS_DIR = ROOT / "assets" / "fonts"    # 思源黑体 SC：Regular / Medium / Bold / Heavy
+# 所有文档正本放在硬盘可见目录，防止只存在聊天里丢失
+DOCS_DIR = ROOT / "docs"
+PROMPTS_DIR = DOCS_DIR / "提示词"
+
+CODEX_CLI = os.environ.get("HERMES_CODEX_CLI", "/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex")
+CODEX_MODELS_CACHE = Path.home() / ".codex" / "models_cache.json"
+
+# 对 Hermes 的任务不可见的全局技能（只在调用参数里屏蔽，不改文件）
+HIDDEN_SKILLS = [
+    Path.home() / ".agents/skills/f1-producer/SKILL.md",
+    Path.home() / ".agents/skills/ios-simulator--cindy-ios-simulator/SKILL.md",
+]
+
+MAX_ACTIVE_EPISODES = 3
+# 测试里关掉，避免联网拉赛历、抓 FIA
+RUN_JOBS = os.environ.get("HERMES_JOBS", "1") == "1"
+MAX_TASK_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = (30, 120, 480)
+QUOTA_POLL_SECONDS = 600
+
+# 2026-10-11 用户按《全局模型分工与 Token 优化表》改定；聊天框跟总控一致
+DEFAULT_CHAT_MODEL = ("gpt-6.1-sol", "high")
+EFFORT_LABELS = {"low": "低", "medium": "中", "high": "高", "xhigh": "极高", "max": "最高", "ultra": "神临"}
+ROLE_MODELS = {
+    "总控": ("gpt-6.1-sol", "high"),
+    "文案": ("gpt-6-astra", "high"),
+    "剪辑决策": ("gpt-6-astra", "high"),
+    "QA评审": ("gpt-6-astra", "high"),
+    "画面核对": ("gpt-6-astra", "medium"),   # D6 排好时间线后看图核对镜头（2026-10-15）
+    "找素材": ("gpt-6.1-sol", "medium"),
+    "新闻抓取": ("gpt-6.1-sol", "medium"),
+    "资料": ("gpt-6.1-sol", "medium"),
+    "梗核实": ("gpt-6.1-sol", "high"),
+    "素材打标": ("gpt-6.1-sol", "medium"),
+    "图形": ("gpt-6.1-sol", "high"),
+    "配音操作": ("gpt-6.1-sol", "medium"),
+}

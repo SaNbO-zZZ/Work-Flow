@@ -1,0 +1,1824 @@
+{
+ "说明": "本机打标的样例镜头：人工逐张看图标注（匈牙利/比利时/英国站回放），用它们的中文 CLIP 向量求每类均值作为原型。shot_type 是镜头类型（2026-10-08 标 96 个），main 是主标签（2026-10-08 标）。素材按 sha256 认，重建见 local_tags.build_prototypes；网页上手动改的主标签也会并入。",
+ "assets": {
+  "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1": "F12026-匈牙利大奖赛回放",
+  "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2": "F12026-比利时大奖赛回放",
+  "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c": "F12026-英国大奖赛回放"
+ },
+ "examples": [
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1,
+   "shot_type": "人物"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 9,
+   "shot_type": "人物"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 34,
+   "shot_type": "图表",
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 66,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 26,
+   "shot_type": "图表",
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 33,
+   "shot_type": "图表",
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1198,
+   "shot_type": "航拍",
+   "main": "航拍风景"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 39,
+   "shot_type": "特写",
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 388,
+   "shot_type": "车载"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 697,
+   "shot_type": "车载",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1116,
+   "shot_type": "人物",
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 10,
+   "shot_type": "人物"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 15,
+   "shot_type": "人物"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 261,
+   "shot_type": "人物",
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 864,
+   "shot_type": "人物",
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1139,
+   "shot_type": "人物",
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1153,
+   "shot_type": "人物",
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1105,
+   "shot_type": "人物",
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1181,
+   "shot_type": "特写",
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1167,
+   "shot_type": "人物",
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 46,
+   "shot_type": "全景"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1130,
+   "shot_type": "全景"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 40,
+   "shot_type": "特写",
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 196,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 340,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 519,
+   "shot_type": "车载",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 532,
+   "shot_type": "车载",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 828,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 916,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1083,
+   "shot_type": "车载",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 5,
+   "shot_type": "人物"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 82,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 832,
+   "shot_type": "车载",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 922,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1142,
+   "shot_type": "全景",
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1172,
+   "shot_type": "全景",
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 108,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 109,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 110,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 111,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 112,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 113,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 114,
+   "shot_type": "航拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 115,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 116,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 117,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 118,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 119,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 36,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 57,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 86,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 93,
+   "shot_type": "全景",
+   "main": "安全车"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 162,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 173,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 217,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 257,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 274,
+   "shot_type": "车载",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 315,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 369,
+   "shot_type": "特写",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 380,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 402,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 441,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 455,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 514,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 521,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 557,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 595,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 620,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 621,
+   "shot_type": "车载",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 653,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 685,
+   "shot_type": "航拍"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 697,
+   "shot_type": "人物",
+   "main": "领奖台"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 26,
+   "shot_type": "图表",
+   "main": "数据图表"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 31,
+   "shot_type": "航拍",
+   "main": "航拍风景"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 63,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 87,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 131,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 134,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 267,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 308,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 310,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 326,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 392,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 474,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 479,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 487,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 531,
+   "shot_type": "航拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 551,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 616,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 757,
+   "shot_type": "跟拍",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 798,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 813,
+   "shot_type": "全景",
+   "main": "比赛中"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 960,
+   "shot_type": "人物",
+   "main": "观众"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 963,
+   "shot_type": "人物"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 970,
+   "shot_type": "全景"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 975,
+   "shot_type": "人物"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 22,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 23,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 24,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 25,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 28,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 30,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 31,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 32,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 56,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1195,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1196,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1197,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 29,
+   "main": "航拍风景"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 35,
+   "main": "航拍风景"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 36,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 37,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 38,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 41,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 42,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 43,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 44,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 45,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 49,
+   "main": "发车格"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 47,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 48,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 53,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1140,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1141,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1144,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1145,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1148,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1150,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1151,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1152,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1123,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1124,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1125,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1126,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1127,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1128,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1129,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1135,
+   "main": "观众"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1154,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1155,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1156,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1157,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1158,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1159,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1161,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1162,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1163,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1164,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1165,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1168,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1169,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1170,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1171,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1173,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1174,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1175,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1176,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1193,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1149,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1160,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1178,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1179,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1180,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1182,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1183,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1184,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1185,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1186,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1187,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1188,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1189,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1190,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1191,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1192,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1089,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1090,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1095,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1096,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1097,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1104,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1106,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1113,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1114,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1115,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 262,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 272,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 297,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 298,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 299,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 313,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 316,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 468,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 469,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 509,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 510,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 522,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 523,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 573,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 574,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 575,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 576,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 623,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 624,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 625,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 626,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 781,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 835,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 856,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 863,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 865,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 866,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 867,
+   "main": "进站"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 798,
+   "main": "维修区车库"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 799,
+   "main": "维修区车库"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1131,
+   "main": "采访"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1132,
+   "main": "采访"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1133,
+   "main": "采访"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1134,
+   "main": "采访"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 72,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 73,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 74,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 75,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 76,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 77,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 78,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 79,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 80,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 81,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1080,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1081,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "f73d0d61daf9a69e9cb59226ba9994b49aa402a671eb54fdb1090e8b5d4d07e1",
+   "idx": 1082,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 22,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 23,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 710,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 711,
+   "main": "数据图表"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 24,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 25,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 32,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 651,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 652,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 657,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 660,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 664,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 665,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 680,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 706,
+   "main": "观众"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 26,
+   "main": "发车格"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 27,
+   "main": "发车格"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 28,
+   "main": "发车格"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 29,
+   "main": "发车格"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 30,
+   "main": "发车格"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 31,
+   "main": "发车格"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 34,
+   "main": "发车格"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 85,
+   "main": "安全车"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 94,
+   "main": "安全车"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 95,
+   "main": "安全车"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 96,
+   "main": "安全车"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 147,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 148,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 149,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 150,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 151,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 64,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 65,
+   "main": "比赛中"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 667,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 668,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 669,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 670,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 671,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 672,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 674,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 675,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 676,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 677,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 678,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 681,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 683,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 684,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 686,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 687,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 688,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 690,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 691,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 692,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 693,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 694,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 696,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 698,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 700,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 701,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 702,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 707,
+   "main": "领奖台"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 650,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 654,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 655,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 689,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 703,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 704,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 705,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 708,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 709,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "29c0d3c3c0d96fd50feeafd104a08dd44e86c7ae93694df9c0db973f4f0c4be2",
+   "idx": 712,
+   "main": "航拍风景"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 36,
+   "main": "观众"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 43,
+   "main": "观众"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 46,
+   "main": "观众"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 37,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 38,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 39,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 40,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 41,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 42,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 45,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 47,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 48,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 50,
+   "main": "发车格"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 822,
+   "main": "安全车"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 825,
+   "main": "安全车"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 827,
+   "main": "安全车"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 346,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 410,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 431,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 563,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 637,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 638,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 642,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 677,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 678,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 711,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 770,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 776,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 781,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 782,
+   "main": "进站"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 239,
+   "main": "维修区车库"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 282,
+   "main": "维修区车库"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 764,
+   "main": "维修区车库"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 865,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 866,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 868,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 869,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 873,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 874,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 875,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 876,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 880,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 886,
+   "main": "庆祝"
+  },
+  {
+   "sha256": "ec2f8fc724c43b5da2035cd8cbfedca0125ddc97b1e88f16043c6830ed99f57c",
+   "idx": 890,
+   "main": "庆祝"
+  }
+ ]
+}

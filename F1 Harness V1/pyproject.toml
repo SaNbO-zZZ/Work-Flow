@@ -1,0 +1,27 @@
+[project]
+name = "f1-hermes"
+version = "0.1.0"
+description = "F1 Hermes V1：F1 自媒体视频多智能体制作 Harness"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "fastapi>=0.141.1",
+    "fastf1>=3.8.3",
+    "httpx>=0.28.1",
+    "segno>=1.6.6",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

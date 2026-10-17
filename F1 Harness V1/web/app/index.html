@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F1 Harness</title>
+<link rel="icon" type="image/png" href="/static/icon-64.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/extra.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="photo" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 5 5 3-3 5 5"/></symbol>
+    <symbol id="chart" viewBox="0 0 24 24"><path d="M4 19h16M7 16V9m5 7V5m5 11v-4"/></symbol>
+    <symbol id="note" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></symbol>
+    <symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9.3 4.7V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="clip" viewBox="0 0 24 24"><path d="m15 7-6.5 6.5a1.5 1.5 0 0 0 3 3L18 10a3 3 0 0 0-6-6l-6.5 6.5a4.5 4.5 0 0 0 9 9L21 13"/></symbol>
+    <symbol id="win" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+    <symbol id="cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M16 3v4M8 3v4M4 11h16"/></symbol>
+    <symbol id="lang" viewBox="0 0 24 24"><path d="M4 5h7M9 3v2c0 4.418-2.239 8-5 8M5 9c0 2.144 2.952 3.908 6.7 4M12 20l4-9 4 9M19.1 18h-6.2"/></symbol>
+  </defs>
+</svg>
+<aside>
+  <div class="brand"><img class="mark" src="/static/icon-64.png" alt="">F1 Harness</div>
+  <button class="btn-new" id="newSession"><svg class="i"><use href="#plus"/></svg>新建会话</button>
+  <div id="groups"></div>
+  <div class="spacer"></div>
+  <button class="nav" data-page="data"><svg class="i"><use href="#cal"/></svg>赛历与数据</button>
+  <button class="nav" data-page="glossary"><svg class="i"><use href="#lang"/></svg>译名表<span class="badge" id="glossaryBadge"></span></button>
+  <button class="nav" data-page="assets"><svg class="i"><use href="#photo"/></svg>素材库</button>
+  <button class="nav" data-page="usage"><svg class="i"><use href="#chart"/></svg>用量</button>
+  <button class="nav" data-page="bench"><svg class="i"><use href="#chart"/></svg>Benchmark</button>
+  <button class="nav" data-page="notes"><svg class="i"><use href="#note"/></svg>经验笔记<span class="badge" id="notesBadge"></span></button>
+  <button class="nav" id="openSettings"><svg class="i"><use href="#gear"/></svg>设置</button>
+</aside>
+
+<main>
+  <div class="topbar" id="topbar"></div>
+
+  <section class="page on" id="chat">
+    <div class="ephead" id="ephead"></div>
+    <div class="thread" id="thread"></div>
+    <div class="dock">
+      <div class="status fold" id="status"><div class="hd"><svg class="i"><use href="#chev"/></svg><span id="statusTitle">后台任务</span></div><ul id="statusList"></ul></div>
+      <div class="composer">
+        <div class="slash" id="slash"></div>
+        <textarea id="input" placeholder="说点什么，或输入 / 查看命令（Enter 发送，Shift+Enter 换行）"></textarea>
+        <div class="ctrl">
+          <select id="model" aria-label="模型"></select>
+          <select id="effort" aria-label="推理强度"></select>
+          <span class="hint" id="scope"></span>
+          <button class="send" id="send" aria-label="发送"><svg class="i"><use href="#up"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" id="usage">
+    <div class="pagebody">
+      <h2>用量</h2>
+      <div class="sub" id="usageSub"></div>
+      <div class="seg" id="usagePeriod"><button class="on" data-p="day">今天</button><button data-p="week">本周</button><button data-p="month">本月</button></div>
+      <svg viewBox="0 0 720 200" width="100%" style="max-width:900px; display:block; margin-bottom:18px" id="chartSvg"></svg>
+      <table><thead><tr><th>时段</th><th>输入</th><th>缓存</th><th>输出</th><th>推理</th><th>美元</th><th>人民币</th></tr></thead><tbody id="usageRows"></tbody></table>
+    </div>
+  </section>
+
+  <section class="page" id="data">
+    <div class="pagebody">
+      <h2>赛历与数据</h2>
+      <div class="sub" id="dataSub"></div>
+      <div class="cards" id="dataCards"></div>
+      <h3>今日前三推荐</h3>
+      <div id="newsPicks"></div>
+      <h3>赛历<span class="hint">时间均为北京时间，点一行展开各场次</span></h3>
+      <div class="seg" id="seasonSeg"></div>
+      <table><thead><tr><th>轮次</th><th>大奖赛</th><th>赛道</th><th>赛制</th><th>正赛</th></tr></thead><tbody id="calRows"></tbody></table>
+      <h3>赛历变动</h3>
+      <ul class="plain" id="calChanges"></ul>
+      <h3>FIA 最新文件</h3>
+      <table><thead><tr><th>发布时间</th><th>分站</th><th>文件</th></tr></thead><tbody id="fiaRows"></tbody></table>
+    </div>
+  </section>
+
+  <section class="page" id="glossary">
+    <div class="pagebody">
+      <h2>译名表</h2>
+      <div class="sub" id="glossarySub"></div>
+      <div class="seg" id="glossaryState"><button class="on" data-s="pending">待审</button><button data-s="approved">已审</button><button data-s="">全部</button></div>
+      <div class="seg" id="glossaryKind"></div>
+      <table><thead><tr><th>类别</th><th>原名</th><th>建议译名</th><th>定稿</th><th></th></tr></thead><tbody id="glossaryRows"></tbody></table>
+      <h3>手动添加</h3>
+      <div class="addrow"><select id="gKind"></select><input id="gOrig" placeholder="原名，如 Oliver Bearman"><input id="gText" placeholder="译名，如 贝尔曼"><button class="btn soft" id="gAdd">添加</button></div>
+    </div>
+  </section>
+
+  <section class="page" id="assets">
+    <div class="pagebody">
+      <h2>素材库</h2>
+      <div class="sub" id="assetsSub">贴链接下载素材；下载完自动切镜头、建画面指纹、本机打标。下面标签可以多选，找同时带这些标签的镜头；也可以直接写一句话搜，比如“雨天的维修区”。</div>
+      <div class="addrow"><input id="dlUrl" placeholder="视频链接（B 站、YouTube 等）" style="flex:1"><button class="btn primary" id="dlAdd">下载</button></div>
+      <ul class="plain" id="dlList"></ul>
+      <div class="addrow" style="margin-top:18px"><input id="assetQ" placeholder="用一句话找镜头，如：红色赛车在雨中超车" style="flex:1"><button class="btn soft" id="assetSearch">搜索</button><button class="ghost" id="assetClear">清除</button></div>
+      <div class="tagbar" id="tagBar"></div>
+      <div class="grid" id="assetGrid"></div>
+    </div>
+  </section>
+  <section class="page" id="bench">
+    <div class="pagebody">
+      <h2>Benchmark</h2>
+      <div class="sub" id="benchSub">AI 评审的成片分数、各分支基线和校准记录。基线只升不降：本分支 G3 通过满几期后，每次 G3 通过取最近几期的中位数。</div>
+      <div class="seg" id="benchBranch"></div>
+      <div class="cards" id="benchCards"></div>
+      <h3>总分趋势<span class="hint">每期取 G3 通过的那次评审（还没通过的取最近一次），虚线是当前基线</span></h3>
+      <svg viewBox="0 0 720 220" width="100%" style="max-width:900px; display:block" id="benchSvg"></svg>
+      <div class="tagbar" id="benchLegend"></div>
+      <h3>成片评审<span class="hint">点一行看分项理由和问题清单</span></h3>
+      <table><thead><tr><th>评审时间</th><th>期</th><th>分支</th><th>总分</th><th>当时基线</th><th>自动返工</th><th>你的打分</th><th>分项</th></tr></thead><tbody id="benchRows"></tbody></table>
+      <h3>基线变化</h3>
+      <table><thead><tr><th>时间</th><th>分支</th><th>变化</th><th>原因</th></tr></thead><tbody id="benchHist"></tbody></table>
+      <h3>校准记录<span class="hint">历史成片校准、测试评审，以及你的打分和 AI 差太多的提醒</span></h3>
+      <div id="benchAlerts"></div>
+      <table><thead><tr><th>时间</th><th>类型</th><th>分支</th><th>视频</th><th>总分</th><th>模型</th></tr></thead><tbody id="benchCalib"></tbody></table>
+    </div>
+  </section>
+  <section class="page" id="notes">
+    <div class="pagebody">
+      <h2>经验笔记</h2>
+      <div class="sub" id="notesSub"></div>
+      <div class="addrow"><span class="sub" style="margin:0">补做经验总结</span><select id="rerunEp" style="flex:1"></select><button class="btn soft" id="rerunGo">开始</button></div>
+      <div class="seg" id="notesState"><button class="on" data-s="pending">待批准</button><button data-s="approved">已生效</button><button data-s="rejected">已驳回或停用</button><button data-s="">全部</button></div>
+      <div id="notesList"></div>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="settings">
+  <div class="panel">
+    <button class="x" id="closeSettings" aria-label="关闭"><svg class="i"><use href="#x"/></svg></button>
+    <h2 style="margin:0 0 4px; font-size:16px">设置 · 账号连接</h2>
+    <div class="sub">B 站扫码登录、X / Instagram 浏览器登录、Google Drive 授权都在这里；登录状态只存在本机，不收账号密码。</div>
+    <div class="acct" id="acctBili"></div>
+    <div class="acct" id="acctX"></div>
+    <div class="acct" id="acctIg"></div>
+    <div class="acct" id="acctDrive"></div>
+    <div class="acct" id="acctPerm"></div>
+    <h2 style="margin:22px 0 4px; font-size:16px">模型分工</h2>
+    <div class="sub">自动流水线按这张表；闲聊时换的模型会一直保留，直到你手动改；立项后的项目会话里换模型只对这一条消息生效。</div>
+    <table><thead><tr><th>角色</th><th>模型</th><th>推理强度</th></tr></thead><tbody id="roleRows"></tbody></table>
+    <div class="sub" style="margin-top:14px" id="priceSource"></div>
+  </div>
+</div>
+<div class="overlay" id="assetPanel">
+  <div class="panel wide">
+    <button class="x" id="closeAsset" aria-label="关闭"><svg class="i"><use href="#x"/></svg></button>
+    <div id="assetDetail"></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<script src="/static/aireview.js"></script>
+<script src="/static/cards.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

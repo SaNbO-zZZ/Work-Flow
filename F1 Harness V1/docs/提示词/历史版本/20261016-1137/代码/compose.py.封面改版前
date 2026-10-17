@@ -1,0 +1,569 @@
+"""M5-6 合成与混音：按时间线出成片 / 粗剪预览，混音，封面，整理交付文件夹。
+
+混音、水印参数照《品牌与混音》：人声 0 dB + EQ(1581 Hz, Q0.5, -2.5 dB)；BGM -20.5 dB 循环、接缝 0.1 秒交叉淡化、
+不淡出；口播时 BGM 最多再压 3.5 dB；水印左上角宽 160、边距 28。
+"""
+from __future__ import annotations
+
+import functools
+import json
+import re
+import shutil
+import sqlite3
+import subprocess
+import tempfile
+import unicodedata
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import numpy as np
+from PIL import Image, ImageDraw
+
+from . import config, db, graphics
+from .assets import FFMPEG, FFPROBE, _font, _run, credit_line, probe, sha256_file
+
+SR = 48000
+# 品牌文件 sha256 前缀（《品牌与混音》）
+BRAND_SHA = {"bgm.mp3": "8739868a968c642a", "watermark.png": "ff212c874dbe47c3"}
+
+VOICE_EQ = "equalizer=f=1581:t=q:w=0.5:g=-2.5"
+BGM_GAIN_DB = -20.5
+LOOP_XFADE = 0.1
+DUCK_MAX_DB = 3.5
+DUCK_THRESHOLD_DB = -26.0
+DUCK_KNEE_DB = 6.0
+DUCK_ATTACK_MS, DUCK_RELEASE_MS = 20, 400
+DUCK_RMS_MS, DUCK_LOOKAHEAD_MS, DUCK_HOLD_MS = 40, 30, 80   # 沿用雪邦混音参数.json
+TARGET_LUFS, TARGET_TP = -16.0, -1.5
+LIMIT_DB = -1.7                                            # 限幅留 0.2 dB 余量
+
+WM_WIDTH, WM_MARGIN = 160, 28
+PREVIEW_SIZE = (960, 540)
+# 雪邦成片：H.264 High 约 5.7 Mbps、AAC 约 200 kbps
+FINAL_X264 = ["-c:v", "libx264", "-preset", "medium", "-crf", "19", "-maxrate", "8M", "-bufsize", "16M",
+              "-profile:v", "high", "-pix_fmt", "yuv420p"]
+PREVIEW_X264 = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "26", "-pix_fmt", "yuv420p"]
+SEG_X264 = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-pix_fmt", "yuv420p"]
+COLOR_TAGS = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"]
+
+BEIJING = ZoneInfo("Asia/Shanghai")
+
+
+# ---------- 品牌文件 ----------
+
+def brand_file(name: str) -> Path:
+    """取品牌文件并核对 sha256 前缀，不对就报错（QA 硬失败项）。"""
+    path = config.BRAND_DIR / name
+    if not path.exists():
+        raise FileNotFoundError(f"品牌文件不存在：{path}")
+    digest = sha256_file(path)
+    if not digest.startswith(BRAND_SHA[name]):
+        raise ValueError(f"{name} 不是指定文件：sha256 {digest[:16]}，应以 {BRAND_SHA[name]} 开头")
+    return path
+
+
+# ---------- 音频 ----------
+
+def _decode(path: Path, channels: int, af: str | None = None) -> np.ndarray:
+    args = [FFMPEG, "-v", "error", "-nostdin", "-i", str(path)]
+    if af:
+        args += ["-af", af]
+    args += ["-ac", str(channels), "-ar", str(SR), "-f", "f32le", "-"]
+    proc = subprocess.run(args, capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"解码失败：{path}：{proc.stderr.decode(errors='replace')[-800:]}")
+    return np.frombuffer(proc.stdout, dtype=np.float32).reshape(-1, channels)
+
+
+def _pipe(audio: np.ndarray, out_args: list, af: str | None = None) -> str:
+    """把 48 kHz 立体声 float 数组喂给 ffmpeg，返回 stderr。"""
+    args = [FFMPEG, "-v", "info", "-nostdin", "-hide_banner", "-nostats",
+            "-f", "f32le", "-ar", str(SR), "-ac", "2", "-i", "-"]
+    if af:
+        args += ["-af", af]
+    proc = subprocess.run(args + out_args, input=np.ascontiguousarray(audio, dtype=np.float32).tobytes(),
+                          capture_output=True)
+    err = proc.stderr.decode(errors="replace")
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg 处理音频失败：{err[-800:]}")
+    return err
+
+
+def _parse_ebur128(err: str) -> dict:
+    summary = err[err.rfind("Summary:"):]
+
+    def num(label):
+        m = re.search(label + r":\s*(-?[\d.]+|-inf)", summary)
+        return float(m.group(1)) if m else None
+    return {"integrated": num("I"), "lra": num("LRA"), "true_peak": num(r"True peak:\s*Peak"),
+            "sample_peak": num(r"Sample peak:\s*Peak")}
+
+
+def _loudness(audio: np.ndarray) -> dict:
+    return _parse_ebur128(_pipe(audio, ["-af", "ebur128=peak=sample+true", "-f", "null", "-"]))
+
+
+def measure(path: Path) -> dict:
+    """ebur128 实测：整体响度 LUFS、响度范围 LU、真峰值 / 采样峰值 dBFS、时长秒。"""
+    proc = subprocess.run([FFMPEG, "-nostdin", "-hide_banner", "-nostats", "-i", str(path), "-vn",
+                           "-af", "ebur128=peak=sample+true", "-f", "null", "-"], capture_output=True, text=True,
+                          errors="replace")
+    if proc.returncode != 0:
+        raise RuntimeError(f"响度测量失败：{path}：{proc.stderr[-800:]}")
+    out = _parse_ebur128(proc.stderr)
+    dur = _run([FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path]).stdout
+    out["duration"] = round(float(dur.strip() or 0), 3)
+    return out
+
+
+def loop_bgm(bgm: np.ndarray, n: int, xfade: float = LOOP_XFADE) -> np.ndarray:
+    """整片循环：每次接缝等功率交叉淡化 xfade 秒；到 n 采样点直接截断，不淡出。"""
+    L, xf = len(bgm), int(round(xfade * SR))
+    if L <= 2 * xf:
+        raise ValueError("BGM 太短，无法循环")
+    t = (np.arange(xf, dtype=np.float32) + 0.5) / xf
+    fin, fout = np.sin(t * np.pi / 2)[:, None], np.cos(t * np.pi / 2)[:, None]
+    out = np.zeros((n + L, bgm.shape[1]), dtype=np.float32)
+    pos, first = 0, True
+    while pos < n:
+        piece = bgm.copy()
+        if not first:
+            piece[:xf] *= fin
+        piece[-xf:] *= fout
+        out[pos:pos + L] += piece
+        pos += L - xf
+        first = False
+    return out[:n]
+
+
+def duck_curve(voice: np.ndarray) -> np.ndarray:
+    """按人声包络算 BGM 衰减量（dB，0~3.5），每个采样点一个值。
+    检测：40 ms RMS，阈值 -26 dBFS、软拐点 6 dB；前视 30 ms、保持 80 ms，起效 20 ms、恢复 400 ms。"""
+    n = len(voice)
+    blk = SR // 1000
+    nb = -(-n // blk)
+    sq = np.zeros(nb * blk, dtype=np.float64)
+    sq[:n] = np.asarray(voice, dtype=np.float64) ** 2
+    ms = sq.reshape(nb, blk).mean(axis=1)
+    w = DUCK_RMS_MS
+    c = np.concatenate([[0.0], np.cumsum(ms)])
+    idx = np.arange(nb)
+    lo, hi = np.maximum(idx - w // 2, 0), np.minimum(idx + w // 2 + 1, nb)
+    level = 10 * np.log10((c[hi] - c[lo]) / (hi - lo) + 1e-12)
+    over = level - DUCK_THRESHOLD_DB
+    tgt = np.clip((over + DUCK_KNEE_DB / 2) / DUCK_KNEE_DB, 0, 1) * DUCK_MAX_DB
+    tgt = np.concatenate([tgt[DUCK_LOOKAHEAD_MS:], np.repeat(tgt[-1:], DUCK_LOOKAHEAD_MS)])
+    a_att, a_rel = np.exp(-1 / DUCK_ATTACK_MS), np.exp(-1 / DUCK_RELEASE_MS)
+    g, hold = 0.0, 0
+    red = np.empty(nb)
+    for i, t in enumerate(tgt.tolist()):
+        if t >= g:
+            g = t + (g - t) * a_att
+            hold = DUCK_HOLD_MS
+        elif hold > 0:
+            hold -= 1
+        else:
+            g = t + (g - t) * a_rel
+        red[i] = g
+    red = np.clip(red, 0, DUCK_MAX_DB)
+    return np.interp(np.arange(n), idx * blk + blk / 2, red).astype(np.float32)
+
+
+def mix(voice_wav: Path, duration: float, out_wav: Path, *, bgm: Path | None = None,
+        report: dict | None = None) -> Path:
+    """配音 + BGM 混成 48 kHz 立体声 WAV，时长 duration。
+    BGM 固定 -20.5 dB（相对原文件），只调人声增益使整体达到 -16 LUFS，再过真峰值限幅 -1.5 dBTP。
+    report 传入 dict 时写回实际人声增益、避让范围、测量结果。"""
+    bgm_path = Path(bgm) if bgm else brand_file("bgm.mp3")
+    n = int(round(duration * SR))
+    v = _decode(Path(voice_wav), 1, VOICE_EQ)[:, 0]
+    voice = np.zeros(n, dtype=np.float32)
+    voice[:min(n, len(v))] = v[:n]
+    music = loop_bgm(_decode(bgm_path, 2), n) * np.float32(10 ** (BGM_GAIN_DB / 20))
+
+    limiter = (f"aresample={SR * 4},alimiter=limit={10 ** (LIMIT_DB / 20):.5f}:attack=1:release=60"
+               f":level=0:latency=1,aresample={SR}")
+    gain_db, red, stats, out = 0.0, np.zeros(n, dtype=np.float32), {}, None
+    has_voice = bool(np.any(np.abs(voice) > 1e-6))
+    for _ in range(4):
+        vg = voice * np.float32(10 ** (gain_db / 20))
+        red = duck_curve(vg) if has_voice else np.zeros(n, dtype=np.float32)
+        mixed = music * (10 ** (-red / 20))[:, None] + vg[:, None]
+        tmp = Path(out_wav).with_suffix(".tmp.f32")
+        _pipe(mixed, ["-af", limiter, "-f", "f32le", "-y", str(tmp)])
+        out = np.fromfile(tmp, dtype=np.float32).reshape(-1, 2)[:n]
+        tmp.unlink(missing_ok=True)
+        stats = _loudness(out)
+        if not has_voice or stats["integrated"] is None or abs(stats["integrated"] - TARGET_LUFS) < 0.1:
+            break
+        gain_db += TARGET_LUFS - stats["integrated"]
+    if len(out) < n:
+        out = np.concatenate([out, np.zeros((n - len(out), 2), dtype=np.float32)])
+    out_wav = Path(out_wav)
+    out_wav.parent.mkdir(parents=True, exist_ok=True)
+    _pipe(out, ["-c:a", "pcm_s24le", "-y", str(out_wav)])
+    if report is not None:
+        report.update({"voice_gain_db": round(gain_db, 2), "bgm_gain_db": BGM_GAIN_DB,
+                       "duck_db": [round(float(red.min()), 2), round(float(red.max()), 2)],
+                       "bgm_sha256": sha256_file(bgm_path), **stats})
+    return out_wav
+
+
+# ---------- 画面 ----------
+
+def _source(conn: sqlite3.Connection, asset_id: int) -> Path:
+    row = conn.execute("SELECT local_path FROM assets WHERE id=?", (asset_id,)).fetchone()
+    if row and row["local_path"] and Path(row["local_path"]).exists():
+        return Path(row["local_path"])
+    hits = [p for p in (config.LIBRARY_DIR / str(asset_id)).glob("source.*") if not p.name.startswith("._")]
+    if not hits:
+        raise FileNotFoundError(f"素材 {asset_id} 的源文件找不到")
+    return hits[0]
+
+
+def _cut(src: Path, clip: dict, frames: int, size: tuple[int, int], fps: int, out: Path, enc: list) -> None:
+    """切一个镜头：先裁（去台标）再缩放铺满、居中裁切，统一帧率；只播 src_in~src_out（-t 截在 src_out，
+    不往后多播），差的零头帧定格最后一帧；丢弃原声。"""
+    W, H = size
+    src_dur = probe(src)["duration"]
+    start = min(max(float(clip["src_in"]), 0.0), max(src_dur - 1.0 / fps, 0.0))
+    length = max(float(clip["src_out"]) - start, 1.0 / fps)
+    vf = []
+    if clip.get("crop"):
+        c = clip["crop"]
+        vf.append(f"crop={int(c['w'])}:{int(c['h'])}:{int(c['x'])}:{int(c['y'])}")
+    vf += [f"scale={W}:{H}:force_original_aspect_ratio=increase", f"crop={W}:{H}", "setsar=1", f"fps={fps}",
+           f"tpad=stop_mode=clone:stop_duration={frames / fps + 1:.3f}", "format=yuv420p"]
+    _run([FFMPEG, "-v", "error", "-nostdin", "-y", "-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", src,
+          "-an", "-sn", "-dn", "-vf", ",".join(vf), "-frames:v", str(frames), "-r", str(fps), *enc, out])
+
+
+@functools.lru_cache(maxsize=8)
+def _layer(path: str, size: tuple[int, int]) -> Image.Image:
+    with Image.open(path) as im:
+        im = im.convert("RGBA")
+        return im if im.size == size else im.resize(size, Image.LANCZOS)
+
+
+def _watermark(size: tuple[int, int]) -> tuple[Image.Image, tuple[int, int]]:
+    k = size[0] / 1920
+    w = round(WM_WIDTH * k)
+    with Image.open(brand_file("watermark.png")) as im:
+        im = im.convert("RGBA")
+        im = im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
+    m = round(WM_MARGIN * k)
+    return im, (m, m)
+
+
+def _overlay_track(layers: list[dict], total: int, size: tuple[int, int], fps: int, work: Path) -> Path:
+    """把所有定时叠层按时间切成区间，每种组合预先合成一张全画幅 PNG，再写成 concat 清单，最后只做一次 overlay。
+    layers: [{"f0", "f1", "path" | "image", "order"}]，帧号区间 [f0, f1)。"""
+    wm, wm_xy = _watermark(size)
+    cuts = sorted({0, total, *(l["f0"] for l in layers), *(l["f1"] for l in layers)})
+    cuts = [c for c in cuts if 0 <= c <= total]
+    spans: list[tuple[int, int, tuple]] = []
+    for a, b in zip(cuts, cuts[1:]):
+        key = tuple(i for i, l in sorted(enumerate(layers), key=lambda x: (x[1]["order"], x[1]["f0"]))
+                    if l["f0"] <= a < l["f1"])
+        if spans and spans[-1][2] == key:
+            spans[-1] = (spans[-1][0], b, key)
+        else:
+            spans.append((a, b, key))
+    out_dir = work / "ov"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    made: dict[tuple, Path] = {}
+    lines = []
+    for a, b, key in spans:
+        if key not in made:
+            canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+            for i in key:
+                l = layers[i]
+                im = l["image"] if "image" in l else _layer(str(l["path"]), size)
+                canvas.alpha_composite(im)
+            canvas.alpha_composite(wm, wm_xy)
+            made[key] = out_dir / f"{len(made):04d}.png"
+            canvas.save(made[key], compress_level=1)
+        lines += [f"file '{made[key]}'", f"duration {(b - a) / fps:.6f}"]
+    lines.append(f"file '{made[spans[-1][2]]}'")
+    listing = work / "ov.txt"
+    listing.write_text("\n".join(lines) + "\n")
+    return listing
+
+
+def _frame(t: float, fps: int) -> int:
+    return int(round(float(t) * fps))
+
+
+def render(ep_dir: Path, timeline: dict, out: Path, *, preview: bool = False,
+           conn: sqlite3.Connection | None = None) -> Path:
+    """按时间线出片。图层从下到上：素材画面（静音）→ overlays → 字幕 → 出处小字 → 水印；声音用 mix()。
+    preview=True 出 960×540 快速编码的粗剪预览（同样带字幕和水印）。"""
+    ep_dir, out = Path(ep_dir), Path(out)
+    own = conn is None
+    conn = conn or db.connect()
+    fps = int(timeline.get("fps", 30))
+    size = PREVIEW_SIZE if preview else tuple(timeline.get("size", (1920, 1080)))
+    duration = float(timeline["duration"])
+    total = _frame(duration, fps)
+    work = ep_dir / "06_合成" / "_work" / ("preview" if preview else "final")
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    try:
+        # 1. 逐镜头切成统一格式的中间片段，再无损拼接
+        enc = PREVIEW_X264 if preview else SEG_X264
+        clips = sorted(timeline["video"], key=lambda c: c["start"])
+        listing = []
+        for i, clip in enumerate(clips):
+            f0, f1 = _frame(clip["start"], fps), min(_frame(clip["end"], fps), total)
+            if f1 <= f0:
+                continue
+            seg = work / f"seg_{i:03d}.mp4"
+            _cut(_source(conn, clip["asset_id"]), clip, f1 - f0, size, fps, seg, enc)
+            listing.append(f"file '{seg}'")
+        if not listing:
+            raise ValueError("时间线里没有画面")
+        (work / "segs.txt").write_text("\n".join(listing) + "\n")
+        base = work / "base.mp4"
+        _run([FFMPEG, "-v", "error", "-nostdin", "-y", "-f", "concat", "-safe", "0", "-i", work / "segs.txt",
+              "-c", "copy", base])
+
+        # 2. 叠层：overlays → 字幕 → 出处小字（水印在合成每张 PNG 时最后贴）
+        layers = []
+        for o in timeline.get("overlays") or []:
+            layers.append({"f0": _frame(o["start"], fps), "f1": _frame(o["end"], fps), "order": 0,
+                           "path": ep_dir / o["path"]})
+        if timeline.get("subtitles"):
+            from . import subtitles
+            cues = json.loads((ep_dir / timeline["subtitles"]).read_text(encoding="utf-8"))
+            for s in subtitles.render_all(cues, work / "subs", size=size):
+                layers.append({"f0": _frame(s["start"], fps), "f1": _frame(s["end"], fps), "order": 1,
+                               "path": Path(s["path"])})
+        tags: dict[str, Image.Image] = {}
+        for c in timeline.get("credits") or []:
+            if c.get("text"):
+                im = tags.get(c["text"]) or tags.setdefault(c["text"], graphics.credit_tag(c["text"], size))
+                layers.append({"f0": _frame(c["start"], fps), "f1": _frame(c["end"], fps), "order": 2, "image": im})
+        layers = [l for l in layers if l["f1"] > l["f0"]]
+        ov = _overlay_track(layers, total, size, fps, work)
+
+        # 3. 混音（成片把混音报告留给硬检查：BGM sha、电平、避让量）
+        report: dict = {}
+        audio = mix(ep_dir / timeline["voice"], duration, work / "mix.wav", report=report)
+        if not preview:
+            (ep_dir / "06_合成" / "混音.json").write_text(json.dumps(report, ensure_ascii=False, indent=1),
+                                                         encoding="utf-8")
+
+        # 4. 一次 overlay + 编码；先写临时文件再改名
+        fc = (f"[0:v]tpad=stop_mode=clone:stop_duration=2[b];"
+              f"[1:v]fps={fps},scale=out_color_matrix=bt709:out_range=tv,format=yuva420p[o];"
+              f"[b][o]overlay=0:0:eof_action=repeat,format=yuv420p[v]")
+        venc = PREVIEW_X264 if preview else FINAL_X264
+        abr = "128k" if preview else "192k"
+        part = out.with_name(out.stem + ".part.mp4")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _run([FFMPEG, "-v", "error", "-nostdin", "-y", "-i", base, "-f", "concat", "-safe", "0", "-i", ov,
+              "-i", audio, "-filter_complex", fc, "-map", "[v]", "-map", "2:a", "-r", str(fps),
+              *venc, *COLOR_TAGS, "-c:a", "aac", "-b:a", abr, "-ar", str(SR), "-ac", "2",
+              "-t", f"{total / fps:.6f}", "-movflags", "+faststart", part])
+        part.replace(out)
+        if not preview:
+            # 封面候选帧从干净底片里挑（没有字幕和水印）
+            from . import cover
+            cand_dir = ep_dir / "06_合成" / "封面候选"
+            shutil.rmtree(cand_dir, ignore_errors=True)
+            cover.pick_cover_frame(base, candidates=8, out_dir=cand_dir)
+    finally:
+        if own:
+            conn.close()
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        work.parent.rmdir()
+    except OSError:
+        pass
+    return out
+
+
+# ---------- 镜头总览 ----------
+
+SHEET_COLS, SHEET_CELL, SHEET_LABEL_H = 6, (320, 180), 46
+
+
+def _mmss(t: float) -> str:
+    m, s = divmod(int(t), 60)
+    return f"{m:02d}:{s:02d}"
+
+
+def contact_sheet(ep_dir: Path, timeline: dict, out: Path, *, conn: sqlite3.Connection | None = None) -> Path:
+    """时间线镜头总览图：每个镜头取源片段中点一帧（照 crop 裁），6 列网格，格下写成片时间、段号、素材#镜头和该段对象。
+    取不到帧的格子留灰。out 是相对路径时放在 ep_dir 下。"""
+    out = Path(ep_dir) / out
+    own = conn is None
+    conn = conn or db.connect()
+    W, H = SHEET_CELL
+    clips = sorted(timeline.get("video") or [], key=lambda c: c["start"])
+    subjects = {b.get("i"): "、".join(b.get("teams") or []) or "无对象" for b in timeline.get("beats") or []}
+    rows = max(1, -(-len(clips) // SHEET_COLS))
+    sheet = Image.new("RGB", (SHEET_COLS * W, rows * (H + SHEET_LABEL_H)), (40, 40, 40))
+    draw, font = ImageDraw.Draw(sheet), _font(16)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            for k, clip in enumerate(clips):
+                x, y = k % SHEET_COLS * W, k // SHEET_COLS * (H + SHEET_LABEL_H)
+                frame = Path(tmp) / f"{k:03d}.jpg"
+                c = clip.get("crop")
+                vf = [f"crop={int(c['w'])}:{int(c['h'])}:{int(c['x'])}:{int(c['y'])}"] if c else []
+                vf += [f"scale={W}:{H}:force_original_aspect_ratio=increase", f"crop={W}:{H}"]
+                mid = (float(clip["src_in"]) + float(clip["src_out"])) / 2
+                try:
+                    _run([FFMPEG, "-v", "error", "-nostdin", "-y", "-ss", f"{mid:.3f}",
+                          "-i", _source(conn, clip["asset_id"]), "-frames:v", "1", "-vf", ",".join(vf), "-q:v", "3",
+                          frame])
+                except (FileNotFoundError, RuntimeError):
+                    pass
+                if frame.exists():
+                    with Image.open(frame) as im:
+                        sheet.paste(im.convert("RGB"), (x, y))
+                beat = clip.get("beat", clip.get("segment"))
+                label = f"{_mmss(clip['start'])} 段{beat} {clip['asset_id']}#{clip.get('shot_idx')}"
+                draw.text((x + 6, y + H + 3), label, fill="white", font=font)
+                if beat in subjects:
+                    draw.text((x + 6, y + H + 23), subjects[beat], fill=(200, 200, 200), font=font)
+    finally:
+        if own:
+            conn.close()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out, "JPEG", quality=85)
+    return out
+
+
+# ---------- 封面 ----------
+
+def covers(ep_dir: Path, video: Path, title: str, subtitle: str | None, branch: str, gp: str | None,
+           series_no: int | None = None) -> dict:
+    """候选帧优先用 render 从底片挑好的（无字幕水印），没有才从成片挑；取居中的一张，套定稿模板出横版、竖版封面到 06_合成/。"""
+    from . import cover
+    out_dir = Path(ep_dir) / "06_合成"
+    cands = sorted(p for p in (out_dir / "封面候选").glob("候选_*.png") if not p.name.startswith("._"))
+    if not cands:
+        cands = cover.pick_cover_frame(Path(video), candidates=8, out_dir=out_dir / "封面候选")
+    if not cands:
+        raise ValueError("成片里挑不出可用的封面帧（全是过暗或过糊的画面）")
+    frame = cands[len(cands) // 2]
+    spec = cover.CoverSpec(frame=frame, title=title, subtitle=subtitle, branch=branch, gp=gp, series_no=series_no)
+    land = cover.render(spec, out=out_dir / "封面_横版.png", orientation="landscape")
+    port = cover.render(spec, out=out_dir / "封面_竖版.png", orientation="portrait")
+    return {"landscape": land, "portrait": port, "frame": frame, "candidates": cands}
+
+
+# ---------- 交付 ----------
+
+def _srt_time(t: float) -> str:
+    ms = int(round(t * 1000))
+    h, ms = divmod(ms, 3600000)
+    m, ms = divmod(ms, 60000)
+    s, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def strip_punct(text: str) -> str:
+    """去掉全部标点（数字里的小数点保留），标点处换成空格。"""
+    text = re.sub(r"(?<=\d)\.(?=\d)", "\0", text)
+    text = "".join(" " if unicodedata.category(ch).startswith("P") else ch for ch in text)
+    return re.sub(r"\s+", " ", text.replace("\0", ".")).strip()
+
+
+def cues_to_srt(cues: list[dict]) -> str:
+    blocks = []
+    for i, c in enumerate(cues, 1):
+        blocks.append(f"{i}\n{_srt_time(c['start'])} --> {_srt_time(c['end'])}\n{strip_punct(c['text'])}\n")
+    return "\n".join(blocks)
+
+
+def _find_srt(ep_dir: Path) -> Path | None:
+    for sub in ("06_合成", "03_配音"):
+        hits = sorted(p for p in (ep_dir / sub).glob("*.srt") if not p.name.startswith("._"))
+        if hits:
+            return next((p for p in hits if p.stem == "字幕"), hits[0])
+    return None
+
+
+def _record(conn, ep, ep_dir: Path, video: Path, loud: dict, files: list[tuple[str, Path]]) -> str:
+    info = probe(video)
+    lines = [f"# 制作记录：{ep['code'] or ep['title']}", "",
+             f"- 期号：{ep['code']}", f"- 标题：{ep['title']}", f"- 分支：{ep['branch']}",
+             f"- 生成时间：{datetime.now(BEIJING).strftime('%Y-%m-%d %H:%M:%S')}（北京时间）", "",
+             "## 成片", "",
+             f"- 时长：{info['duration']:.2f} 秒；{info['width']}×{info['height']}，{info['fps']} 帧，{info['vcodec']}",
+             f"- 响度：{loud['integrated']} LUFS；响度范围 {loud['lra']} LU；真峰值 {loud['true_peak']} dBTP；"
+             f"采样峰值 {loud['sample_peak']} dBFS",
+             f"- 混音：人声 EQ 1581 Hz Q0.5 -2.5 dB；BGM {BGM_GAIN_DB} dB 循环（接缝 {LOOP_XFADE} 秒交叉淡化，不淡出）；"
+             f"口播避让最多 {DUCK_MAX_DB} dB；整体目标 {TARGET_LUFS} LUFS / {TARGET_TP} dBTP", ""]
+    tl_path = ep_dir / "06_合成" / "时间线.json"
+    if tl_path.exists():
+        tl = json.loads(tl_path.read_text(encoding="utf-8"))
+        used: dict[int, list] = {}
+        for c in tl.get("video", []):
+            used.setdefault(c["asset_id"], []).append(c)
+        lines += ["## 素材使用清单", "", "| 素材 | 标题 | 来源 | 出处 | 使用片段（源 → 成片，秒） |", "|---|---|---|---|---|"]
+        for aid, clips in used.items():
+            row = conn.execute("SELECT title, source_url, credit, uploader FROM assets WHERE id=?", (aid,)).fetchone()
+            row = dict(row) if row else {}
+            spans = "；".join(f"{c['src_in']:.1f}–{c['src_out']:.1f} → {c['start']:.1f}–{c['end']:.1f}"
+                             for c in clips)
+            cells = [str(aid), row.get("title") or "", row.get("source_url") or "",
+                     (credit_line(row) or "") if row else "", spans]
+            lines.append("| " + " | ".join(s.replace("|", "／") for s in cells) + " |")
+        lines.append("")
+    lines += ["## 交付文件", "", "| 类型 | 文件 | sha256 |", "|---|---|---|"]
+    lines += [f"| {k} | {p.name} | {sha256_file(p)} |" for k, p in files]
+    return "\n".join(lines) + "\n"
+
+
+def deliver(conn: sqlite3.Connection, episode_id: int, ep_dir: Path) -> list[dict]:
+    """整理 08_交付：成片、零标点 SRT、横竖版封面、标题和简介（有就拷）、制作记录；写 deliveries 表。"""
+    ep_dir = Path(ep_dir)
+    ep = conn.execute("SELECT * FROM episodes WHERE id=?", (episode_id,)).fetchone()
+    if ep is None:
+        raise ValueError(f"没有 id={episode_id} 的期")
+    dst = ep_dir / "08_交付"
+    dst.mkdir(parents=True, exist_ok=True)
+    video = ep_dir / "06_合成" / "成片.mp4"
+    land, port = ep_dir / "06_合成" / "封面_横版.png", ep_dir / "06_合成" / "封面_竖版.png"
+    for p in (video, land, port):
+        if not p.exists():
+            raise FileNotFoundError(f"缺交付文件：{p}")
+
+    files: list[tuple[str, Path]] = []
+
+    def put(kind: str, src: Path, name: str):
+        target = dst / name
+        shutil.copyfile(src, target)   # 不带扩展属性，免得 exFAT 生成 ._ 文件
+        files.append((kind, target))
+
+    put("成片", video, "成片.mp4")
+    srt = _find_srt(ep_dir)
+    if srt:
+        put("字幕", srt, "字幕.srt")
+    else:
+        cues = json.loads((ep_dir / "03_配音" / "字幕.json").read_text(encoding="utf-8"))
+        (dst / "字幕.srt").write_text(cues_to_srt(cues), encoding="utf-8")
+        files.append(("字幕", dst / "字幕.srt"))
+    put("横版封面", land, "横版封面.png")
+    put("竖版封面", port, "竖版封面.png")
+    desc = ep_dir / "02_文案" / "标题和简介.txt"
+    if desc.exists():
+        put("标题和简介", desc, "标题和简介.txt")
+    record = dst / "制作记录.md"
+    record.write_text(_record(conn, ep, ep_dir, video, measure(video), files), encoding="utf-8")
+    files.append(("制作记录", record))
+
+    result, ts = [], db.now()
+    with db.transaction(conn):
+        for kind, path in files:
+            digest = sha256_file(path)
+            conn.execute("INSERT INTO deliveries(episode_id, kind, path, sha256, created_at) VALUES (?,?,?,?,?) "
+                         "ON CONFLICT(episode_id, kind) DO UPDATE SET path=excluded.path, sha256=excluded.sha256, "
+                         "created_at=excluded.created_at", (episode_id, kind, str(path), digest, ts))
+            result.append({"kind": kind, "path": str(path), "sha256": digest})
+    return result

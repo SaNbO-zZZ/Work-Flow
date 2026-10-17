@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F1 Hermes · 样稿</title>
+<style>
+/* 配色、描边、阴影取自 Hermes Desktop（MIT）styles.css；样稿只做视觉确认，数据均为示例 */
+:root {
+  color-scheme: light dark;
+  --fg: #17171a; --primary: #0053fd; --warm: #cf806d;
+  --bg: #f8faff; --sidebar: rgba(243,247,255,.71); --card: #ffffff; --widget: #fcfcfe;
+  --bubble: color-mix(in srgb, #0053fd 6%, #fff);
+  --t1: color-mix(in srgb, var(--fg) 94%, transparent);
+  --t2: color-mix(in srgb, var(--fg) 74%, transparent);
+  --t3: color-mix(in srgb, var(--fg) 54%, transparent);
+  --t4: color-mix(in srgb, var(--fg) 36%, transparent);
+  --line: color-mix(in srgb, var(--primary) 10%, color-mix(in srgb, var(--fg) 8%, transparent));
+  --hover: color-mix(in srgb, var(--primary) 4%, transparent);
+  --active: color-mix(in srgb, var(--primary) 8%, transparent);
+  --fill: color-mix(in srgb, var(--primary) 5%, color-mix(in srgb, var(--fg) 4%, transparent));
+  --green: #2f9e6e; --red: #d94c63; --amber: #c98a1b;
+  --stroke-nous: color-mix(in srgb, currentColor 3%, transparent);
+  --shadow-nous: 0 .125rem .25rem -.125rem rgb(0 0 0/7%), 0 .5rem .75rem -.375rem rgb(0 0 0/6%), 0 1.25rem 1.75rem -.875rem rgb(0 0 0/6%);
+  --r: 6px; --r-lg: 9px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8eaf0; --primary: #5b8cff; --bg: #0d0d0e; --sidebar: rgba(10,10,11,.78); --card: #161618; --widget: #141416;
+    --bubble: color-mix(in srgb, #5b8cff 14%, #161618);
+    --shadow-nous: 0 .5rem 1.5rem rgb(0 0 0/45%);
+    --green: #55a583; --red: #e75e78; --amber: #d9a441;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font: 13.5px/1.55 var(--font); color: var(--t1); background: var(--bg); display: flex; overflow: hidden; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+svg.i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* ---------- 侧栏 ---------- */
+aside { width: 252px; flex: none; background: var(--sidebar); backdrop-filter: blur(24px) saturate(1.4); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 12px 8px; }
+.brand { display: flex; align-items: center; gap: 8px; padding: 4px 8px 12px; font-weight: 600; letter-spacing: .2px; }
+.brand .mark { width: 22px; height: 22px; border-radius: 5px; background: #ffcc00; display: grid; place-items: center; font-size: 11px; color: #000; font-weight: 800; }
+.btn-new { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r); color: var(--t1); }
+.btn-new:hover, .row:hover, .nav:hover { background: var(--hover); }
+.group { margin-top: 14px; }
+.group h6 { margin: 0 0 4px; padding: 0 10px; font-size: 11px; font-weight: 500; color: var(--t3); display: flex; justify-content: space-between; }
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r); color: var(--t2); width: 100%; text-align: left; }
+.row.on { background: var(--active); color: var(--t1); }
+.row .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.dot.review { background: var(--primary); } .dot.work { background: var(--amber); } .dot.queue { background: var(--t4); } .dot.done { background: var(--green); }
+.meta { font-size: 11px; color: var(--t3); }
+.meta.warn { color: var(--red); }
+.spacer { flex: 1; }
+.nav { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--r); color: var(--t2); width: 100%; }
+.nav.on { background: var(--active); color: var(--t1); }
+
+/* ---------- 主区 ---------- */
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.topbar { height: 40px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 18px; font-size: 12px; color: var(--t3); border-bottom: 1px solid var(--line); }
+.topbar b { color: var(--t1); font-weight: 600; }
+.topbar .sep { width: 1px; height: 14px; background: var(--line); }
+.quota { display: flex; align-items: center; gap: 7px; }
+.bar { width: 64px; height: 5px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--primary); }
+.page { flex: 1; display: none; flex-direction: column; min-height: 0; }
+.page.on { display: flex; }
+
+.ephead { padding: 14px 28px 10px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.ephead .code { font-size: 11.5px; color: var(--t3); }
+.ephead h1 { margin: 0; font-size: 15px; font-weight: 600; }
+.steps { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--t3); }
+.steps span { display: inline-flex; align-items: center; gap: 4px; }
+.steps .ok { color: var(--green); } .steps .now { color: var(--primary); font-weight: 600; }
+.steps em { width: 14px; height: 1px; background: var(--line); display: inline-block; }
+.actions { margin-left: auto; display: flex; gap: 4px; }
+.ghost { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 4px; color: var(--t2); font-size: 12px; }
+.ghost:hover { background: var(--hover); color: var(--t1); }
+
+.thread { flex: 1; overflow-y: auto; padding: 6px 28px 24px; }
+.msg { max-width: 760px; margin: 0 auto 18px; }
+.msg.user { display: flex; justify-content: flex-end; }
+.msg.user .bubble { background: var(--bubble); padding: 8px 13px; border-radius: 12px 12px 3px 12px; max-width: 78%; }
+.who { font-size: 11.5px; color: var(--t3); margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+.chip { font-size: 10.5px; padding: 1px 6px; border-radius: 3px; background: var(--fill); color: var(--t2); }
+.widget { background: var(--widget); border-radius: var(--r-lg); padding: 14px 16px; margin-top: 8px; }
+.widget h5 { margin: 0 0 8px; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.below { display: flex; gap: 8px; margin-top: 8px; }
+.btn { padding: 5px 14px; border-radius: 4px; font-size: 12.5px; }
+.btn.primary { background: var(--primary); color: #fff; }
+.btn.soft { background: var(--fill); }
+.btn.text { color: var(--t3); }
+.script p { margin: 0 0 6px; }
+.fact { color: var(--primary); border-bottom: 1px dotted currentColor; position: relative; cursor: help; font-size: 11px; vertical-align: super; }
+.fact:hover::after { content: attr(data-src); position: absolute; left: 0; top: 18px; white-space: nowrap; background: var(--card); color: var(--t1); padding: 6px 9px; border-radius: 4px; box-shadow: var(--shadow-nous); font-size: 11.5px; z-index: 5; }
+.pending { background: color-mix(in srgb, var(--amber) 22%, transparent); border-radius: 2px; padding: 0 2px; }
+.media { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.player { aspect-ratio: 16/9; border-radius: 6px; background: linear-gradient(135deg, #1b1f2a, #2b3245); display: grid; place-items: center; color: #fff9; font-size: 12px; position: relative; overflow: hidden; }
+.player .wm { position: absolute; left: 8px; top: 8px; width: 18px; height: 18px; border-radius: 50%; background: #fff3; }
+.wave { height: 44px; border-radius: 6px; background: var(--fill); display: flex; align-items: center; gap: 2px; padding: 0 10px; }
+.wave i { flex: 1; background: var(--primary); opacity: .55; border-radius: 1px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12px; color: var(--t2); margin-top: 8px; }
+.kv b { color: var(--t1); font-weight: 500; }
+
+/* 卡片堆叠（跨期复用审批） */
+.stack { position: relative; max-width: 760px; margin: 0 auto 18px; padding-top: 7px; }
+.stack .behind { position: absolute; left: 2%; right: 2%; top: 0; height: 30px; border-radius: var(--r-lg); background: var(--widget); opacity: .7; transform: scale(.96); }
+.stack .front { position: relative; }
+.thumbs { display: flex; gap: 6px; }
+.thumbs i { width: 88px; aspect-ratio: 16/9; border-radius: 4px; background: linear-gradient(135deg, #37404f, #1e2430); }
+
+/* 状态栏 + 输入框 */
+.dock { padding: 0 28px 16px; }
+.status { max-width: 760px; margin: 0 auto; background: var(--widget); border-radius: var(--r-lg) var(--r-lg) 0 0; padding: 8px 12px 6px; font-size: 12px; }
+.status .hd { display: flex; align-items: center; gap: 6px; color: var(--t2); cursor: pointer; }
+.status ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 20px; }
+.status li { display: flex; align-items: center; gap: 7px; color: var(--t2); }
+.status.fold ul { display: none; }
+.spin { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--amber); border-right-color: transparent; animation: s 1s linear infinite; }
+@keyframes s { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.composer { max-width: 760px; margin: 0 auto; background: var(--card); border-radius: 0 0 var(--r-lg) var(--r-lg); box-shadow: var(--shadow-nous); padding: 10px 12px 8px; position: relative; }
+.composer textarea { width: 100%; border: 0; outline: 0; resize: none; background: none; color: var(--t1); font: inherit; min-height: 44px; }
+.ctrl { display: flex; align-items: center; gap: 8px; }
+select { font: inherit; font-size: 12px; color: var(--t2); background: var(--fill); border: 0; border-radius: 4px; padding: 3px 6px; }
+.send { margin-left: auto; width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; }
+.hint { font-size: 11px; color: var(--t4); }
+.slash { position: absolute; left: 10px; bottom: calc(100% + 6px); width: 340px; background: var(--card); border-radius: 8px; box-shadow: var(--shadow-nous); border: 1px solid var(--stroke-nous); padding: 5px; display: none; }
+.slash.on { display: block; }
+.slash div { display: flex; gap: 10px; padding: 5px 8px; border-radius: 4px; font-size: 12.5px; }
+.slash div:hover { background: var(--hover); }
+.slash code { color: var(--primary); width: 70px; }
+
+/* 其他页 */
+.pagebody { flex: 1; overflow-y: auto; padding: 22px 32px; }
+.pagebody h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.sub { color: var(--t3); font-size: 12px; margin-bottom: 18px; }
+.seg { display: inline-flex; background: var(--fill); border-radius: 5px; padding: 2px; margin-bottom: 14px; }
+.seg button { padding: 3px 12px; border-radius: 4px; font-size: 12px; color: var(--t2); }
+.seg button.on { background: var(--card); color: var(--t1); box-shadow: 0 1px 2px rgb(0 0 0/8%); }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th { text-align: left; font-weight: 500; color: var(--t3); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 6px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); color: var(--t2); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.asset .thumb { aspect-ratio: 16/9; border-radius: 6px; background: linear-gradient(135deg, #2c3446, #151a24); margin-bottom: 6px; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+
+/* 设置浮层 */
+.overlay { position: fixed; inset: 0; background: rgb(0 0 0/18%); backdrop-filter: blur(3px); display: none; place-items: center; z-index: 20; }
+.overlay.on { display: grid; }
+.panel { width: 720px; max-height: 80vh; overflow-y: auto; background: var(--card); border-radius: 12px; box-shadow: var(--shadow-nous); border: 1px solid var(--stroke-nous); padding: 20px 24px; }
+.panel .x { float: right; color: var(--t3); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="photo" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 5 5 3-3 5 5"/></symbol>
+    <symbol id="chart" viewBox="0 0 24 24"><path d="M4 19h16M7 16V9m5 7V5m5 11v-4"/></symbol>
+    <symbol id="note" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/></symbol>
+    <symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9.3 4.7V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="clip" viewBox="0 0 24 24"><path d="m15 7-6.5 6.5a1.5 1.5 0 0 0 3 3L18 10a3 3 0 0 0-6-6l-6.5 6.5a4.5 4.5 0 0 0 9 9L21 13"/></symbol>
+    <symbol id="win" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+  </defs>
+</svg>
+
+<aside>
+  <div class="brand"><span class="mark">SF</span>F1 Hermes</div>
+  <button class="btn-new"><svg class="i"><use href="#plus"/></svg>新建会话</button>
+
+  <div class="group"><h6>等我审核 <span>2</span></h6>
+    <button class="row on" data-go="chat"><span class="dot review"></span><span class="t">巴林正赛复盘</span><span class="meta warn">剩 9 小时</span></button>
+    <button class="row" data-go="chat"><span class="dot review"></span><span class="t">周中资讯合集</span><span class="meta">G1</span></button>
+  </div>
+  <div class="group"><h6>制作中 <span>1</span></h6>
+    <button class="row" data-go="chat"><span class="dot work"></span><span class="t">雪邦前瞻</span><span class="meta">配音</span></button>
+  </div>
+  <div class="group"><h6>排队中 <span>1</span></h6>
+    <button class="row" data-go="chat"><span class="dot queue"></span><span class="t">小科普：尾流</span><span class="meta">第 1</span></button>
+  </div>
+  <div class="group"><h6>已完成</h6>
+    <button class="row" data-go="chat"><span class="dot done"></span><span class="t">阿塞拜疆排位复盘</span><span class="meta">7 天后清理</span></button>
+  </div>
+  <div class="group"><h6>闲聊</h6>
+    <button class="row" data-go="chat"><span class="t">2027 规则问答</span></button>
+  </div>
+
+  <div class="spacer"></div>
+  <button class="nav" data-go="assets"><svg class="i"><use href="#photo"/></svg>素材库</button>
+  <button class="nav" data-go="usage"><svg class="i"><use href="#chart"/></svg>用量</button>
+  <button class="nav" data-go="notes"><svg class="i"><use href="#note"/></svg>经验笔记</button>
+  <button class="nav" id="openSettings"><svg class="i"><use href="#gear"/></svg>设置</button>
+</aside>
+
+<main>
+  <div class="topbar">
+    <span class="quota">额度 本周剩 <b>77%</b><span class="bar"><i style="width:77%"></i></span>10 月 3 日重置</span>
+    <span class="sep"></span>
+    <span>本对话 输入 <b>124.6k</b> · 缓存 98.2k · 输出 <b>8.3k</b> · 推理 5.1k ≈ <b>$0.61 / ¥4.36</b></span>
+    <span class="sep"></span>
+    <span>今日 ≈ <b>$4.80 / ¥34.20</b></span>
+    <span style="margin-left:auto" class="hint">金额按 API 公开价折算 · 汇率 7.13（09-29）</span>
+  </div>
+
+  <!-- 聊天页 -->
+  <section class="page on" id="chat">
+    <div class="ephead">
+      <div><div class="code">20260930-复盘-巴林大奖赛-01 · R 正赛 · 目标 250 秒</div><h1>巴林正赛复盘</h1></div>
+      <div class="steps">
+        <span class="ok"><svg class="i"><use href="#check"/></svg>G0</span><em></em>
+        <span class="ok"><svg class="i"><use href="#check"/></svg>G1</span><em></em>
+        <span class="ok"><svg class="i"><use href="#check"/></svg>配音</span><em></em>
+        <span class="now">● G2 待审</span><em></em><span>合成</span><em></em><span>G3</span>
+      </div>
+      <div class="actions">
+        <button class="ghost"><svg class="i"><use href="#pause"/></svg>暂停</button>
+        <button class="ghost"><svg class="i"><use href="#up"/></svg>插队</button>
+        <button class="ghost"><svg class="i"><use href="#x"/></svg>取消</button>
+      </div>
+    </div>
+
+    <div class="thread">
+      <div class="msg user"><div class="bubble">开头那句改短一点，维斯塔潘那段数据别堆太多</div></div>
+
+      <div class="msg">
+        <div class="who">总控 <span class="chip">gpt-6-astra · 高</span></div>
+        已改。开头从 3 句压成 1 句，维斯塔潘段只保留两个数字，其他换成画面里的排名塔。改动如下：
+        <div class="widget script">
+          <h5>逐字稿 · 第 2 版（只显示改动段）</h5>
+          <p>头哥这场是真的把巴林跑成了自家后花园 杆位起步一路没让出过领先<span class="fact" data-src="F3 · FastF1 2026 巴林 正赛 · 领跑圈数 57/57">F3</span></p>
+          <p>最快圈比第二名快了零点四秒<span class="fact" data-src="F7 · FastF1 2026 巴林 正赛 · 最快圈 1:32.118">F7</span> 这差距放在今年已经很夸张了</p>
+          <p>倒是 <span class="pending" title="译名待审">安东内利</span> 这站进站慢了三秒多 直接把领奖台送了出去</p>
+        </div>
+      </div>
+
+      <div class="msg">
+        <div class="who">总控 <span class="chip">gpt-6-astra · 高</span></div>
+        配音和粗剪做好了，请审 G2。配音检查：读错 0 处，词组内停顿 1 处已修，句间停顿已压到 0.3 秒以内，语速 372 字/分。
+        <div class="widget">
+          <h5>G2 配音与粗剪
+            <button class="ghost" id="openG3" style="margin-left:auto"><svg class="i"><use href="#win"/></svg>在独立窗口打开</button></h5>
+          <div class="media">
+            <div class="player"><span class="wm"></span>粗剪预览 · 4:07</div>
+            <div>
+              <div class="wave" id="wave"></div>
+              <div class="kv">
+                <span>时长</span><b>247 秒（目标 250，范围 210–300）</b>
+                <span>镜头</span><b>96 个 · 短于 1.2 秒的 2 个（提醒）</b>
+                <span>重复画面</span><b>无</b>
+                <span>跨期复用</span><b>1 处待你同意</b>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="below">
+          <button class="btn primary">通过</button>
+          <button class="btn soft">打回配音</button>
+          <button class="btn soft">打回画面</button>
+          <button class="btn text">写意见…</button>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="behind"></div>
+        <div class="widget front">
+          <h5>跨期复用 · 需要你同意（1/2）</h5>
+          <div style="display:flex; gap:14px">
+            <div class="thumbs"><i></i><i></i></div>
+            <div style="font-size:12.5px; color:var(--t2)">
+              勒克莱尔 T1 锁死镜头，上次用在 <b style="color:var(--t1)">20260915-复盘-意大利大奖赛-01</b>（0:42–0:45）<br>
+              原因：本期新素材和 Drive 未用素材里没有这个角度的画面，已搜 12 个来源。
+            </div>
+          </div>
+        </div>
+        <div class="below"><button class="btn primary">同意</button><button class="btn soft">拒绝，换别的</button></div>
+      </div>
+    </div>
+
+    <div class="dock">
+      <div class="status" id="status">
+        <div class="hd"><svg class="i"><use href="#chev"/></svg>后台任务 · 其他期</div>
+        <ul>
+          <li><span class="spin"></span>雪邦前瞻 · 剪映生成配音</li>
+          <li><span class="dot queue"></span>小科普：尾流 · 排队第 1</li>
+          <li><svg class="i" style="color:var(--green)"><use href="#check"/></svg>周中资讯合集 · D1 资料与事实</li>
+          <li><svg class="i" style="color:var(--green)"><use href="#check"/></svg>周中资讯合集 · D5 梗与出处</li>
+        </ul>
+      </div>
+      <div class="composer">
+        <div class="slash" id="slash">
+          <div><code>/model</code>这条消息换模型</div>
+          <div><code>/effort</code>这条消息换推理强度</div>
+          <div><code>/pause</code>暂停本期</div>
+          <div><code>/resume</code>继续本期</div>
+          <div><code>/jump</code>插队到最前</div>
+          <div><code>/retry</code>重试失败的步骤</div>
+          <div><code>/status</code>查看本期进度</div>
+          <div><code>/cancel</code>取消本期</div>
+        </div>
+        <textarea id="input" placeholder="说点什么，或输入 / 查看命令"></textarea>
+        <div class="ctrl">
+          <button class="ghost" aria-label="添加附件"><svg class="i"><use href="#clip"/></svg></button>
+          <select id="model"></select>
+          <select id="effort"></select>
+          <span class="hint" id="scope">只对这条消息生效，发送后回到 gpt-6-astra · 高</span>
+          <button class="send" id="send"><svg class="i"><use href="#up"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 用量页 -->
+  <section class="page" id="usage">
+    <div class="pagebody">
+      <h2>用量</h2>
+      <div class="sub">金额按 OpenAI API 公开价折算，仅用于比较成本；订阅不按 token 扣费。</div>
+      <div class="seg"><button class="on">今天</button><button>本周</button><button>本月</button></div>
+      <svg viewBox="0 0 720 200" width="100%" style="max-width:900px; display:block; margin-bottom:18px" id="chartSvg"></svg>
+      <table><thead><tr><th>时段</th><th>输入</th><th>缓存</th><th>输出</th><th>推理</th><th>美元</th><th>人民币</th></tr></thead><tbody id="usageRows"></tbody></table>
+    </div>
+  </section>
+
+  <!-- 素材库 -->
+  <section class="page" id="assets">
+    <div class="pagebody">
+      <h2>素材库</h2>
+      <div class="sub">素材卡永久保存在本地；本地文件已清理的，需要时从 Drive 下载。</div>
+      <div class="cards" id="assetCards"></div>
+    </div>
+  </section>
+
+  <!-- 经验笔记 -->
+  <section class="page" id="notes">
+    <div class="pagebody">
+      <h2>经验笔记</h2>
+      <div class="sub">每期 G3 后总结，你批准后才生效，之后每期制作都会参考。</div>
+      <div class="seg"><button class="on">待你批准 · 2</button><button>已生效 · 5</button></div>
+      <div class="widget"><h5>数据段不要连续三个镜头都用图表</h5><div class="sub" style="margin:0">来源：巴林正赛复盘 G3 意见 · 适用：复盘、前瞻</div></div>
+      <div class="below"><button class="btn primary">批准</button><button class="btn soft">改一下</button><button class="btn text">不要</button></div>
+      <div class="widget" style="margin-top:14px"><h5>开头 50 秒不要连续用短句加标点</h5><div class="sub" style="margin:0">来源：雪邦前瞻 · 适用：全部分支</div></div>
+      <div class="below"><button class="btn primary">批准</button><button class="btn soft">改一下</button><button class="btn text">不要</button></div>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="settings">
+  <div class="panel">
+    <button class="x" id="closeSettings"><svg class="i"><use href="#x"/></svg></button>
+    <h2 style="margin:0 0 4px; font-size:16px">设置 · 模型分工</h2>
+    <div class="sub">自动流水线按这张表；聊天框里临时换模型只对当前动作生效。</div>
+    <table><thead><tr><th>角色</th><th>模型</th><th>推理强度</th></tr></thead><tbody id="roleRows"></tbody></table>
+  </div>
+</div>
+
+<script>
+const models = [["gpt-6-astra","GPT-6-Astra",6],["gpt-6-sol","GPT-6-Sol",6],["gpt-6-luna","GPT-6-Luna",5],["gpt-5.6-sol","GPT-5.6-Sol",6],["gpt-5.6-terra","GPT-5.6-Terra",6],["gpt-5.6-luna","GPT-5.6-Luna",5],["gpt-5.5","GPT-5.5",4]];
+const efforts = [["low","低"],["medium","中"],["high","高"],["xhigh","极高"],["max","最高"],["ultra","神临"]];
+const $ = s => document.querySelector(s);
+const modelSel = $("#model"), effortSel = $("#effort");
+
+function fillEfforts(n, keep) {
+  effortSel.innerHTML = efforts.slice(0, n).map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+  effortSel.value = efforts.slice(0, n).some(e => e[0] === keep) ? keep : "high";
+}
+function resetDefault() { modelSel.value = "gpt-6-astra"; fillEfforts(6, "high"); markScope(); }
+function markScope() {
+  const changed = modelSel.value !== "gpt-6-astra" || effortSel.value !== "high";
+  $("#scope").style.color = changed ? "var(--primary)" : "";
+}
+modelSel.innerHTML = models.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+modelSel.onchange = () => { fillEfforts(models.find(m => m[0] === modelSel.value)[2], effortSel.value); markScope(); };
+effortSel.onchange = markScope;
+resetDefault();
+
+$("#input").oninput = e => $("#slash").classList.toggle("on", e.target.value.startsWith("/"));
+$("#send").onclick = () => { $("#input").value = ""; $("#slash").classList.remove("on"); resetDefault(); };
+$("#status .hd").onclick = () => $("#status").classList.toggle("fold");
+
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.id === b.dataset.go));
+  document.querySelectorAll(".row, .nav").forEach(x => x.classList.remove("on"));
+  b.classList.add("on");
+});
+$("#openSettings").onclick = () => $("#settings").classList.add("on");
+$("#closeSettings").onclick = () => $("#settings").classList.remove("on");
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("#settings").classList.remove("on"); });
+$("#openG3").onclick = () => window.open("review.html", "g-review", "width=1280,height=800");
+
+$("#wave").innerHTML = Array.from({length: 60}, (_, i) => `<i style="height:${18 + Math.abs(Math.sin(i * 1.7)) * 70}%"></i>`).join("");
+
+const roles = [["总控","gpt-6-astra","高"],["剪辑决策","gpt-6-astra","高"],["QA 评审（独立对话）","gpt-6-astra","高"],["文案","gpt-6-sol","高"],["资料","gpt-6-sol","高"],["找素材","gpt-6-sol","高"],["梗核实","gpt-6-sol","高"],["素材打标","gpt-6-sol","高"],["图形","gpt-6-sol","高"],["配音操作","gpt-6-sol","高"]];
+$("#roleRows").innerHTML = roles.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("");
+
+const hours = Array.from({length: 24}, (_, h) => h);
+const inp = hours.map(h => h < 8 ? 0 : Math.round(40 + 90 * Math.abs(Math.sin(h / 2.3)) + (h === 8 ? 160 : 0)));
+const out = inp.map(v => Math.round(v * 0.08)), rea = inp.map(v => Math.round(v * 0.05));
+const max = Math.max(...inp), X = h => 40 + h * 28, Y = v => 180 - v / max * 160;
+const line = (arr, c) => `<polyline fill="none" stroke="${c}" stroke-width="1.8" points="${arr.map((v, h) => `${X(h)},${Y(v)}`).join(" ")}"/>`;
+$("#chartSvg").innerHTML =
+  hours.filter(h => h % 3 === 0).map(h => `<text x="${X(h)}" y="196" font-size="10" fill="currentColor" opacity=".5" text-anchor="middle">${h}:00</text>`).join("") +
+  `<line x1="40" y1="180" x2="${X(23)}" y2="180" stroke="currentColor" opacity=".15"/>` +
+  line(inp, "var(--primary)") + line(out, "var(--warm)") + line(rea, "var(--green)") +
+  `<text x="${X(8)+6}" y="${Y(inp[8])+4}" font-size="10.5" fill="currentColor" opacity=".6">08:00 新闻抓取</text>`;
+$("#usageRows").innerHTML = hours.filter(h => inp[h]).map(h => {
+  const usd = (inp[h] * 0.00125 + out[h] * 0.01 + rea[h] * 0.01).toFixed(2);
+  return `<tr><td>${String(h).padStart(2,"0")}:00</td><td>${inp[h]}k</td><td>${Math.round(inp[h]*.78)}k</td><td>${out[h]}k</td><td>${rea[h]}k</td><td>$${usd}</td><td>¥${(usd*7.13).toFixed(2)}</td></tr>`;
+}).join("");
+
+const assets = [["勒克莱尔 T1 锁死","法拉利 · 勒克莱尔 · 蒙扎 · 事故","用过 1 次"],["巴林夜赛航拍","巴林 · 航拍","未使用"],["红牛进站 2.1 秒","红牛 · 维斯塔潘 · 进站","用过 2 次"],["雪邦看台全景","雪邦 · 看台","未使用 · 仅 Drive"],["梅奔车库","梅奔 · 围场","未使用"],["冲刺起步","起步 · 车载","用过 1 次"]];
+$("#assetCards").innerHTML = assets.map(a => `<div class="asset"><div class="thumb"></div><div style="font-weight:500">${a[0]}</div><div class="tags">${a[1].split(" · ").map(t => `<span class="chip">${t}</span>`).join("")}</div><div class="meta" style="margin-top:4px">${a[2]}</div></div>`).join("");
+</script>
+</body>
+</html>

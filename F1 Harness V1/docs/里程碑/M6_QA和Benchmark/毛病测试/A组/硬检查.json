@@ -1,0 +1,155 @@
+{
+ "passed": false,
+ "items": [
+  {
+   "name": "水印",
+   "ok": false,
+   "hard": true,
+   "detail": "左上角(28,28) 宽 160 处水印缺失或位置/大小不对：1.0s 误差89.8/相关0.00，82.2s 误差80.8/相关-0.07，163.4s 误差67.8/相关0.03"
+  },
+  {
+   "name": "BGM 文件",
+   "ok": false,
+   "hard": true,
+   "detail": "BGM sha256 7a85cc4bd3b0c4bf，应以 8739868a968c642a 开头"
+  },
+  {
+   "name": "BGM 电平",
+   "ok": true,
+   "hard": true,
+   "detail": "BGM -20.5 dB"
+  },
+  {
+   "name": "真峰值",
+   "ok": true,
+   "hard": true,
+   "detail": "-1.6 dBTP"
+  },
+  {
+   "name": "整体响度",
+   "ok": true,
+   "hard": false,
+   "detail": "-16.0 LUFS"
+  },
+  {
+   "name": "画面规格",
+   "ok": true,
+   "hard": true,
+   "detail": "1920×1080 30 帧 H.264"
+  },
+  {
+   "name": "音轨",
+   "ok": true,
+   "hard": true,
+   "detail": "1 条 AAC 48 kHz"
+  },
+  {
+   "name": "时长",
+   "ok": true,
+   "hard": true,
+   "detail": "成片 164.40s，时间线 164.37s"
+  },
+  {
+   "name": "字幕零标点",
+   "ok": false,
+   "hard": true,
+   "detail": "03_配音/字幕.json 第84条「国庆这次不用熬夜！」含 ！"
+  },
+  {
+   "name": "字幕时长",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "同一段画面两次",
+   "ok": false,
+   "hard": true,
+   "detail": "第2个镜头(5.30s)与第43个镜头(124.60s)（素材5 10.9–13.9s 与 10.9–14.2s）"
+  },
+  {
+   "name": "A-B-A",
+   "ok": false,
+   "hard": true,
+   "detail": "第23个镜头(66.57s)和第25个镜头(71.20s)都是 素材6#9，中间只隔了 1 个镜头"
+  },
+  {
+   "name": "跨期复用",
+   "ok": false,
+   "hard": true,
+   "detail": "第19个镜头(53.00s)素材6 14.0–17.1s 在第 1 号期用过，未经同意"
+  },
+  {
+   "name": "画面铺满",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "镜头过短",
+   "ok": false,
+   "hard": false,
+   "detail": "短于 1.2 秒：第37个镜头(111.23s)1.10s"
+  },
+  {
+   "name": "带字幕镜头",
+   "ok": true,
+   "hard": false,
+   "detail": ""
+  },
+  {
+   "name": "台标未裁",
+   "ok": true,
+   "hard": false,
+   "detail": ""
+  },
+  {
+   "name": "科普不写期数",
+   "ok": true,
+   "hard": true,
+   "detail": "前瞻分支不查"
+  },
+  {
+   "name": "前瞻缺赛道简图",
+   "ok": false,
+   "hard": true,
+   "detail": "时间线里没有赛道图叠层，先重跑 D4 图形与叠层"
+  },
+  {
+   "name": "未审译名",
+   "ok": false,
+   "hard": true,
+   "detail": "未审译名：Pirelli"
+  },
+  {
+   "name": "数字无[F#]或数值不符",
+   "ok": false,
+   "hard": true,
+   "detail": "「但想跑好五十八圈，光有直线速度还不够，轮胎也得撑得住」：五十八圈 和事实对不上（[F3] 雪邦国际赛道 F1 正赛圈数：56）；「顺便翻翻纪录榜：维特尔四次夺冠，至今最多；迈克尔·舒马赫和汉密尔顿各拿五次杆位，…」：带数字没标 [F#]"
+  },
+  {
+   "name": "复盘成绩处罚复核",
+   "ok": true,
+   "hard": true,
+   "detail": "前瞻分支不查"
+  },
+  {
+   "name": "标题不把传闻写成事实",
+   "ok": false,
+   "hard": true,
+   "detail": "标题「维斯塔潘明年转会梅赛德斯 雪邦前瞻」用肯定语气讲「转会」，逐字稿里找不到对应的官方依据"
+  },
+  {
+   "name": "未授权人声",
+   "ok": false,
+   "hard": true,
+   "detail": "配音来源记的音色是「新闻女声」，授权的是「热血解说员」；保留了素材原声（素材没有人声授权）：第26个镜头(74.43s)"
+  },
+  {
+   "name": "交付齐全",
+   "ok": true,
+   "hard": true,
+   "detail": "还没有 08_交付，跳过"
+  }
+ ]
+}

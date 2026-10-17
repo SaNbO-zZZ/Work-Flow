@@ -1,0 +1,64 @@
+{
+ "复盘": {
+  "text": "维斯塔潘赢下铃鹿正赛拿到25分。诺里斯第三名完赛。皮亚斯特里吃了5秒罚时。",
+  "official_source": "official_results(2025, 3)",
+  "official_top3": [
+   {
+    "number": "1",
+    "full": "Max Verstappen",
+    "last": "Verstappen",
+    "pos": 1,
+    "classified": "1",
+    "status": "Finished",
+    "points": 25.0
+   },
+   {
+    "number": "4",
+    "full": "Lando Norris",
+    "last": "Norris",
+    "pos": 2,
+    "classified": "2",
+    "status": "Finished",
+    "points": 18.0
+   },
+   {
+    "number": "81",
+    "full": "Oscar Piastri",
+    "last": "Piastri",
+    "pos": 3,
+    "classified": "3",
+    "status": "Finished",
+    "points": 15.0
+   }
+  ],
+  "penalties": {},
+  "review_issues": {
+   "checked": 4,
+   "bad": [
+    "「诺里斯第三名完赛」：Lando Norris 官方第2名，稿里说第三",
+    "「皮亚斯特里吃了5秒罚时」：Oscar Piastri 赛会罚时没有，稿里说罚 5 秒"
+   ],
+   "unparsed": 0
+  },
+  "item": {
+   "name": "复盘成绩处罚复核",
+   "ok": false,
+   "hard": true,
+   "detail": "「诺里斯第三名完赛」：Lando Norris 官方第2名，稿里说第三；「皮亚斯特里吃了5秒罚时」：Oscar Piastri 赛会罚时没有，稿里说罚 5 秒"
+  }
+ },
+ "科普": {
+  "item": {
+   "name": "科普不写期数",
+   "ok": false,
+   "hard": true,
+   "detail": "03_配音/字幕.json 第2条「第三期」；标题和简介「第7期」"
+  },
+  "对照_前瞻分支": {
+   "name": "科普不写期数",
+   "ok": true,
+   "hard": true,
+   "detail": "前瞻分支不查"
+  }
+ }
+}

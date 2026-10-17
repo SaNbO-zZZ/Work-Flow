@@ -1,0 +1,214 @@
+"""2026-10-15 用户定：程序先在 YouTube 官方频道搜候选（搜索词按“主体＋赛事＋动作”拼）交给 GPT 挑，
+GPT 没给链接就直接取候选；段里讲到的车队没有官方运营视频要在小结里说。搜索全部替身，不联网。"""
+import asyncio
+import json
+from pathlib import Path
+
+import pytest
+from test_m6_sourcing import (RACE, _asset, _filler, _manifest, _other_ep, _probe, _run, _runner, _search,  # noqa: F401
+                              fake_dns, notes, rep)
+
+from hermes import sourcing
+from hermes.scheduler import StepDeferred
+from hermes.sourcing import yt_search as REAL_YT_SEARCH   # conftest 把模块里的换成了空结果
+
+SCRIPT2 = ("# 新加坡复盘\n\n## 法拉利这笔策略账\n法拉利让勒克莱尔提前进站，结果被反超。\n\n"
+           "## 红牛的单圈\n维斯塔潘在滨海湾的杆位单圈。\n")
+SEG1, SEG2 = "法拉利这笔策略账", "红牛的单圈"
+KNOWN = "https://www.youtube.com/watch?v=KNOWNKNOWN1"
+
+
+def _e(vid, title, channel, duration):
+    return {"id": vid, "title": title, "channel": channel, "duration": duration,
+            "url": f"https://www.youtube.com/watch?v={vid}"}
+
+
+HL = _e("HLHLHLHLHL1", "Singapore GP 2026 Race Highlights", "FORMULA 1", 480)
+RADIO = _e("RADIORADIO1", "Leclerc team radio Singapore 2026", "FORMULA 1", 200)
+RB = _e("RBRBRBRBRB1", "Singapore 2026 Behind the Scenes", "Oracle Red Bull Racing", 300)
+AERIAL = _e("AERIALAERI1", "Marina Bay aerial 2026", "Singapore GP", 120)
+RESULTS = {
+    "highlights": [HL, _e("GBGBGBGBGB1", "British GP 2026 Race Highlights", "FORMULA 1", 480),
+                   _e("FANFANFANF1", "Singapore 2026 highlights", "F1 Fan Edits", 300),
+                   _e("FULLFULLFU1", "2026 Singapore Grand Prix Full Race Replay", "FORMULA 1", 7200)],
+    "Red Bull Racing": [RB, _e("RBHLRBHLRB1", "Singapore 2026 race highlights", "Oracle Red Bull Racing", 300)],
+    "aerial": [AERIAL],
+    "Leclerc": [_e("KNOWNKNOWN1", "Leclerc Singapore 2026", "FORMULA 1", 100), RADIO,
+                _e("NODURNODUR1", "Leclerc Singapore 2026 interview", "FORMULA 1", None)],
+}
+
+
+def _fake_search(asked=None):
+    async def search(q, n=8):
+        if asked is not None:
+            asked.append(q)
+        return [e for key, es in RESULTS.items() if key in q for e in es]
+    return search
+
+
+@pytest.fixture
+def rep2(rep):
+    (Path(rep["folder"]) / "02_文案" / "逐字稿.md").write_text(SCRIPT2, encoding="utf-8")
+    return rep
+
+
+def _segs():
+    return sourcing.segments(SCRIPT2)
+
+
+def test_search_queries_team_driver_action_circuit(conn):
+    qs = sourcing.search_queries(conn, _segs(), RACE)
+    by = {}
+    for seg, q in qs:
+        by.setdefault(seg, []).append(q)
+    assert qs[:3] == [(SEG1, "2026 Singapore Grand Prix highlights"), (SEG1, "2026 Singapore Grand Prix drivers react"),
+                      (SEG1, "2026 Singapore Grand Prix tech talk")]
+    assert {"Ferrari Singapore 2026 behind the scenes", "Ferrari 2026 Singapore Grand Prix",
+            "Leclerc 2026 Singapore Grand Prix", "Leclerc overtake 2026 Singapore Grand Prix"} <= set(by[SEG1])
+    assert {"Red Bull Racing Singapore 2026 behind the scenes", "Red Bull Racing 2026 Singapore Grand Prix",
+            "Verstappen 2026 Singapore Grand Prix", "Verstappen pole lap 2026 Singapore Grand Prix",
+            "Singapore Grand Prix circuit official aerial", "Singapore Grand Prix track guide"} <= set(by[SEG2])
+    assert not any("Red Bull" in q for q in by[SEG1]) and not any("aerial" in q for q in by[SEG1])
+    assert len({q for _, q in qs}) == len(qs) <= sourcing.SEARCH_MAX_QUERIES
+    # 段多时封顶，各段轮流取
+    texts = ("法拉利 勒克莱尔 超车", "红牛 维斯塔潘 撞墙", "迈凯伦 诺里斯 进站", "梅赛德斯 拉塞尔 杆位", "威廉姆斯 塞恩斯 赛道")
+    many = [{"name": f"段{i}", "text": t} for i, t in enumerate(texts)]
+    got = sourcing.search_queries(conn, many, RACE)
+    assert len(got) == sourcing.SEARCH_MAX_QUERIES and {seg for seg, _ in got} == {f"段{i}" for i in range(5)}
+
+
+def test_official_channel():
+    oc = sourcing.official_channel
+    assert oc("FORMULA 1", RACE) == "F1官方" and oc("F1", RACE) == "F1官方"
+    assert oc("Oracle Red Bull Racing", RACE) == "车队官方" and oc("Scuderia Ferrari HP", None) == "车队官方"
+    assert oc("Singapore GP", RACE) == "举办方" and oc("Singapore Grand Prix", RACE) == "举办方"
+    assert oc("F1 Fan Edits", RACE) is None and oc("Singapore Sports Hub", RACE) is None
+    assert oc("Singapore GP", None) is None and oc("Monaco GP", RACE) is None and oc("", RACE) is None
+
+
+def test_yt_search_parses_and_fails_soft(monkeypatch):
+    calls = []
+
+    class Proc:
+        def __init__(self, out, code):
+            self.out, self.returncode = out, code
+
+        async def communicate(self):
+            return self.out, b"ERROR: boom"
+
+    def make(out, code):
+        async def exec_(*args, **kw):
+            calls.append(args)
+            return Proc(out, code)
+        return exec_
+
+    data = {"entries": [{"id": "HLHLHLHLHL1", "title": "T", "channel": "FORMULA 1", "duration": 60},
+                        {"id": "RBRBRBRBRB1", "title": "B", "uploader": "Oracle Red Bull Racing"},
+                        {"id": "x"}, "bad"]}
+    monkeypatch.setattr(sourcing.asyncio, "create_subprocess_exec", make(json.dumps(data).encode(), 0))
+    got = asyncio.run(REAL_YT_SEARCH("2026 Singapore Grand Prix highlights", 5))
+    assert calls[0][-1] == "ytsearch5:2026 Singapore Grand Prix highlights" and "--flat-playlist" in calls[0]
+    assert got == [{"id": "HLHLHLHLHL1", "title": "T", "channel": "FORMULA 1", "duration": 60,
+                    "url": "https://www.youtube.com/watch?v=HLHLHLHLHL1"},
+                   {"id": "RBRBRBRBRB1", "title": "B", "channel": "Oracle Red Bull Racing", "duration": None,
+                    "url": "https://www.youtube.com/watch?v=RBRBRBRBRB1"}]
+    monkeypatch.setattr(sourcing.asyncio, "create_subprocess_exec", make(b"", 1))
+    assert asyncio.run(REAL_YT_SEARCH("q")) == []
+
+
+def test_candidates_filter_rank_and_team_gaps(conn, rep2, tmp_path):
+    _asset(conn, tmp_path, 1, source_url=KNOWN, title="已有")
+    cands, gaps = asyncio.run(sourcing.candidates(conn, _segs(), RACE, search=_fake_search()))
+    by = {}
+    for c in cands:
+        by.setdefault(c["segment"], []).append(c["url"])
+    # 非官方、别站、太长、没时长、库里已有、车队频道发的比赛集锦都不要；讲关键点的段比赛集锦在前
+    assert by == {SEG1: [HL["url"], RADIO["url"]], SEG2: [RB["url"], AERIAL["url"]]}
+    hl = cands[0]
+    assert hl["kind"] == "F1官方" and hl["minutes"] == 8.0 and hl["same_race"] is True
+    assert {c["url"]: c["kind"] for c in cands}[AERIAL["url"]] == "举办方"
+    assert {c["url"]: c["kind"] for c in cands}[RB["url"]] == "车队官方"
+    assert gaps == [{"segment": SEG1, "team": "法拉利"}]
+    # 每段上限、时长上限
+    cands, _ = asyncio.run(sourcing.candidates(conn, _segs(), RACE, search=_fake_search(), limit_per_seg=1,
+                                               max_minutes=4))
+    assert [c["url"] for c in cands] == [RADIO["url"], AERIAL["url"]]
+
+
+def test_run_falls_back_to_candidates_when_gpt_gives_none(conn, rep2, tmp_path, notes):
+    _filler(conn, tmp_path, _other_ep(conn))
+    _asset(conn, tmp_path, 1, source_url=KNOWN, title="已有")
+    seen, asked = [], []
+    with pytest.raises(StepDeferred, match="下载"):
+        _run(conn, rep2, runner=_runner([], seen), search=_search(set()), probe=_probe({}), yt=_fake_search(asked))
+    assert asked and seen
+    p = seen[0]["prompt"]
+    assert "4. 下面“程序在 YouTube 官方频道搜到的候选”里的视频优先挑" in p and "5. 单条不超过" in p
+    assert "## 程序在 YouTube 官方频道搜到的候选（按段）" in p and f"### {SEG1}" in p
+    assert f"- [F1官方] Singapore GP 2026 Race Highlights | FORMULA 1 | 8.0 分钟 | {HL['url']}" in p
+    reply = Path(rep2["folder"]) / "04_素材" / "_找素材" / "回复.json"
+    assert json.loads(reply.read_text(encoding="utf-8")) == {"items": []}
+    m = _manifest(rep2)
+    s = m["summary"]
+    assert s["gpt_found"] == 0 and s["candidates"] == 4 and s["fallback"] == 4
+    assert s["team_gaps"] == [{"segment": SEG1, "team": "法拉利"}]
+    assert {f["url"]: (f["segment"], f["state"]) for f in m["found"]} == {
+        HL["url"]: (SEG1, "下载中"), RADIO["url"]: (SEG1, "下载中"), RB["url"]: (SEG2, "下载中"),
+        AERIAL["url"]: (SEG2, "下载中")}
+    assert {f["reason"] for f in m["found"]} == {"程序搜到的官方候选（GPT 没给）"}
+
+
+def test_run_gpt_error_with_candidates_continues(conn, rep2, tmp_path, notes):
+    _filler(conn, tmp_path, _other_ep(conn))
+    with pytest.raises(StepDeferred, match="下载"):
+        _run(conn, rep2, runner=_runner(RuntimeError("断网")), search=_search(set()), probe=_probe({}),
+             yt=_fake_search())
+    reply = Path(rep2["folder"]) / "04_素材" / "_找素材" / "回复.json"
+    assert json.loads(reply.read_text(encoding="utf-8")) == {"error": "断网"}
+    s = _manifest(rep2)["summary"]
+    assert s["gpt_error"] == "断网" and s["fallback"] == 4
+
+
+def test_run_gpt_items_no_fallback(conn, rep2, tmp_path, notes):
+    _filler(conn, tmp_path, _other_ep(conn))
+    items = [{"url": RB["url"], "title": RB["title"], "channel": RB["channel"], "segment": SEG2, "reason": "r"}]
+    with pytest.raises(StepDeferred, match="下载"):
+        _run(conn, rep2, runner=_runner(items), search=_search(set()), probe=_probe({}), yt=_fake_search())
+    m = _manifest(rep2)
+    assert "fallback" not in m["summary"] and [f["url"] for f in m["found"]] == [RB["url"]]
+
+
+def test_summary_text_candidates_fallback_and_team_gap():
+    out = {"existing": 0, "from_library": 0, "gpt_called": True, "forced_by_feedback": False, "gpt_found": 0,
+           "downloaded": 3, "failed": [], "skipped": [], "candidates": 5, "fallback": 4, "short_segments": [],
+           "notes": [], "team_gaps": [{"segment": SEG1, "team": "法拉利"}, {"segment": "结尾", "team": "法拉利"}]}
+    text = sourcing.summary_text(out)
+    assert "程序在 YouTube 官方频道搜到候选 5 条" in text
+    assert "GPT 没给链接，程序直接取了 4 条官方候选，下载成功 3 条" in text
+    assert "法拉利段（法拉利这笔策略账、结尾）没有车队官方运营视频，用 F1 官方采访和维修区画面顶上。" in text
+    out.update(candidates=None, fallback=0, gpt_found=2, team_gaps=[])
+    text = sourcing.summary_text(out)
+    assert "候选" not in text and "GPT 找到 2 条" in text and "车队官方运营" not in text
+
+
+def test_open_gaps_drop_team_with_downloaded_video(conn, tmp_path):
+    gaps = [{"segment": SEG1, "team": "法拉利"}, {"segment": SEG2, "team": "红牛"}]
+    found = [{"state": "已下载", "channel": "Scuderia Ferrari HP"}, {"state": "跳过", "channel": "Oracle Red Bull Racing"}]
+    assert sourcing._open_gaps(conn, gaps, [], found) == [{"segment": SEG2, "team": "红牛"}]
+
+
+def test_candidates_unsure_title_checked_by_description(conn, rep2):
+    """标题认不出哪站的车队 Vlog：简介写本站才留，写别站或年份不对就不要。"""
+    sg = _e("VLOGSGSGSG1", "Our Night Race | Behind The Charge", "Oracle Red Bull Racing", 400)
+    my = _e("VLOGMYMYMY1", "Our First Win Of 2026!!! | Behind The Charge", "Oracle Red Bull Racing", 400)
+    info = {sg["url"]: {"description": "All the behind-the-scenes from Singapore under the lights", "upload_date": "20261012"},
+            my["url"]: {"description": "Max's incredible win in Malaysia", "upload_date": "20261009"}}
+
+    async def search(q, n=8):
+        return [sg, my] if "Red Bull Racing" in q else []
+
+    async def probe(url):
+        return info[url]
+
+    cands, _ = asyncio.run(sourcing.candidates(conn, _segs(), RACE, search=search, probe=probe))
+    assert [c["url"] for c in cands] == [sg["url"]] and cands[0]["same_race"] is True

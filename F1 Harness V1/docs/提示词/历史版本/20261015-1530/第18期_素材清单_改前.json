@@ -1,0 +1,171 @@
+{
+  "stage_run": 14,
+  "asset_ids": [
+    13,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "found": [
+    {
+      "url": "https://www.youtube.com/watch?v=mQmE1m5Vz2c",
+      "title": "Max Verstappen's Pole Lap | 2026 Singapore Grand Prix | Pirelli",
+      "channel": "FORMULA 1",
+      "segment": "红牛回升靠什么",
+      "reason": "对应本站杆位铺垫，仅用于口播提到排位的部分",
+      "state": "已下载",
+      "site": "YouTube",
+      "same_race": true,
+      "minutes": 2.0,
+      "download_id": 18,
+      "asset_id": 23
+    }
+  ],
+  "summary": {
+    "existing": 5,
+    "from_library": 0,
+    "library_notes": [],
+    "segments": [
+      {
+        "name": "开场",
+        "need": 9,
+        "have": 90.0
+      },
+      {
+        "name": "红牛回升靠什么",
+        "need": 21,
+        "have": 39.0
+      },
+      {
+        "name": "法拉利这笔策略账",
+        "need": 33,
+        "have": 22.0
+      },
+      {
+        "name": "梅奔找到方向之后",
+        "need": 20,
+        "have": 26.0
+      },
+      {
+        "name": "木瓜的合作后续",
+        "need": 10,
+        "have": 27.0
+      },
+      {
+        "name": "评论互动与下集预告",
+        "need": 7,
+        "have": 50.0
+      }
+    ],
+    "gpt_called": true,
+    "gpt_found": 1,
+    "forced_by_feedback": true,
+    "forced_segments": [
+      "全片"
+    ],
+    "race": {
+      "event": "Singapore Grand Prix",
+      "season": 2026,
+      "name_zh": "新加坡大奖赛"
+    },
+    "own_race": 0,
+    "dropped_other": [],
+    "candidates": 7,
+    "team_gaps": [
+      {
+        "segment": "开场",
+        "team": "法拉利"
+      },
+      {
+        "segment": "开场",
+        "team": "红牛"
+      },
+      {
+        "segment": "红牛回升靠什么",
+        "team": "红牛"
+      },
+      {
+        "segment": "法拉利这笔策略账",
+        "team": "法拉利"
+      },
+      {
+        "segment": "梅奔找到方向之后",
+        "team": "梅赛德斯"
+      },
+      {
+        "segment": "木瓜的合作后续",
+        "team": "迈凯伦"
+      },
+      {
+        "segment": "评论互动与下集预告",
+        "team": "红牛"
+      }
+    ]
+  },
+  "since": "2026-10-15T04:35:29+00:00",
+  "race": {
+    "event": "Singapore Grand Prix",
+    "season": 2026,
+    "name_zh": "新加坡大奖赛"
+  },
+  "other_library": "deny",
+  "other_library_at": "2026-10-15T07:06:01+00:00",
+  "assets": [
+    {
+      "id": 13,
+      "title": "【排位】F1 R17 2026 新加坡大奖赛 4K HDR（内嵌自制双语字幕） p01 R17 排位赛-1",
+      "gp_event": "Singapore Grand Prix",
+      "season": 2026,
+      "session": "排位",
+      "category": "比赛回放",
+      "same_race": true
+    },
+    {
+      "id": 19,
+      "title": "Race Highlights | 2026 Singapore Grand Prix",
+      "gp_event": "Singapore Grand Prix",
+      "season": 2026,
+      "session": "正赛",
+      "category": "集锦",
+      "same_race": true
+    },
+    {
+      "id": 20,
+      "title": "Sprint Highlights | 2026 Singapore Grand Prix",
+      "gp_event": "Singapore Grand Prix",
+      "season": 2026,
+      "session": "冲刺",
+      "category": "集锦",
+      "same_race": true
+    },
+    {
+      "id": 21,
+      "title": "Qualifying Highlights | 2026 Singapore Grand Prix",
+      "gp_event": "Singapore Grand Prix",
+      "season": 2026,
+      "session": "排位",
+      "category": "集锦",
+      "same_race": true
+    },
+    {
+      "id": 22,
+      "title": "Drivers React After the Race | 2026 Singapore Grand Prix",
+      "gp_event": "Singapore Grand Prix",
+      "season": 2026,
+      "session": "正赛",
+      "category": "集锦",
+      "same_race": true
+    },
+    {
+      "id": 23,
+      "title": "Max Verstappen's Pole Lap | 2026 Singapore Grand Prix | Pirelli",
+      "gp_event": "Singapore Grand Prix",
+      "season": 2026,
+      "session": "排位",
+      "category": "车载",
+      "same_race": true
+    }
+  ]
+}

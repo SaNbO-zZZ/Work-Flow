@@ -1,0 +1,1381 @@
+"""M6-3 D2 自动找素材：本期已有 → 素材库里没被别的期用过的 → 让 GPT 联网找视频，下载入库关联本期。
+
+复盘期认得出是哪一站时（2026-10-14 用户定）：库里本站（同一站同一年）素材全拿 → 不够让 GPT 找本站视频（比赛实况只要
+F1 官方 YouTube 集锦，再找车队运营、F1 官方运营、举办方航拍视频，可以来自 YouTube、X、Instagram）→ 还不够在会话里问用户要不要用素材库里其他站的画面，不自己拿。
+2026-10-16 用户定：车队官方发的运营视频不必是本站，今年各站的运营视频、车队日常视频、车队内部拍的车辆开发宣传视频都能用（本站的优先，往年的不要）。
+下载交给 download.worker 排队做，本步骤用 StepDeferred 隔一会儿回来看，不占调度器、重启后能续上。
+"""
+from __future__ import annotations
+
+import asyncio
+import ipaddress
+import json
+import logging
+import math
+import re
+import socket
+import sqlite3
+from datetime import date, datetime, timezone
+from pathlib import Path
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
+
+from . import (asset_identity, assets, bilibili, codex_runner, config, db, download, drive, edit, facts, glossary, library,
+               prompts, research, social_login, versions, visual_search)
+from .events import broker, notify
+from .scheduler import StepDeferred, StepNotReady
+
+log = logging.getLogger("hermes.sourcing")
+
+MANIFEST = "素材清单.json"
+DEFAULT_MAX = 6
+DEFAULT_MAX_MINUTES = 15
+DEFAULT_RACE_MAX_MINUTES = 180   # 本站完整回放
+OPS_MAX_MINUTES = 30     # 车队官方运营视频单条上限（剪辑只取片段，2026-10-16 放宽）
+CHARS_PER_SECOND = 5.7   # 雪邦试跑：936 字配出 164 秒
+SECONDS_PER_SHOT = 2.5
+TOP_SHARE = 0.1          # 以文搜图的绝对分普遍偏高，只能按"落在全库前 10%"算贴合
+SPARE = 3                # 干净镜头总数至少是需要镜头数的 3 倍，剪辑才有得挑
+LIBRARY_MAX = 4
+QUERY_CHARS = 48
+PROBE_TIMEOUT = 90
+POLL_SECONDS = 60
+WAIT_LIMIT = 4 * 3600    # 从排进下载队列算起
+PROCESS_WAIT = 1800      # 下载完后等指纹、向量、打标
+SEARCH_MAX_QUERIES = 20  # 程序在 YouTube 搜官方候选，最多搜这么多次
+UNSURE_MAX = 40          # 标题认不出哪站的候选，最多取这么多条简介来认（车队官方的先认）
+CHANNEL_RECENT = 10      # 文案讲到的车队，直接列它 YouTube 官方频道最近这么多条上传（关键词搜索常排不上）
+# 官方频道标题、简介没写别站时，上传日期在正赛前后这几天内就算本站（周四媒体日到下周三，背靠背的下一站周四才开始）
+RACE_DAYS_BEFORE = 3
+RACE_DAYS_AFTER = 3
+SEARCH_PER_QUERY = 8
+SEARCH_PARALLEL = 4
+FALLBACK_PER_SEG = 2     # GPT 没给链接时每段直接取的候选数
+
+INSTRUCTION = """本期现有素材不够配画面，请联网找可以下载来剪辑的视频。
+1. 比赛实况（练习、排位、冲刺、正赛的赛道画面）只给 YouTube 上 FORMULA 1 官方频道发布的集锦，赛段要和这一段讲的对上；别的频道、别的网站的比赛画面都不要。
+2. 运营和航拍画面：车队官方、F1 官方、赛道举办方（大奖赛主办方）发布的运营视频（幕后、车库、无线电、Vlog、采访）和赛道航拍，可以是 YouTube、X、Instagram 上官方账号发的单个视频或帖子。车队官方发的运营视频不必是本站的：今年各站的运营视频、车队日常视频、车队内部拍的车辆开发宣传视频都可以，本站的优先，往年的不要。不要给 F1 官网（formula1.com）、B 站的链接；不要搬运、二次剪辑、带大面积字幕或别家台标的视频；都要是单个视频页，不要频道页、主页、播放列表、搜索页、直播。
+3. 按段的场景找（“各段画面缺口”里每段标了场景）：讲升级、研发、新零件、空气动力的段，找车队工厂、风洞、模拟器、新零件上车这类开发宣传视频；讲可靠性、故障、工程师的段，找车库、维修、工程师工作的运营视频；讲关键点、名场面（撞车、冲出赛道、超车、故障、进站失误之类）的段，找这一场拍到这件事的比赛集锦，看清是哪位车手、哪个弯；讲赛道就找航拍和举办方的视频；讲往届就找那一年的集锦；其他段讲到哪支车队就找这支车队自己发的运营视频。比赛集锦只给讲比赛的段；本站的运营视频没有就给今年别站的、日常的、开发宣传的。
+4. 下面“程序在 YouTube 官方频道搜到的候选”是程序在本机联网搜的，已核对过是官方频道、时长合适、今年发的，优先从里面挑，按段的场景对上标题再给；你打不开 YouTube 视频页也照样按标题挑，网址照抄候选的；候选不够或不对口再自己联网补。
+5. 单条不超过 {max_minutes} 分钟（车队官方运营视频不超过 {ops_minutes} 分钟），集锦、车载单圈这类短视频优先。
+6. "已有链接"里出现过的不要再给。
+7. 每条写 url（你打开确认过的视频页，或照抄候选的网址）、title（视频原标题）、channel（频道或 UP 主）、segment（对应的段名）、reason（为什么合适，30 字内）。
+8. 最多 {limit} 条，按优先级从高到低排；比赛集锦宁缺毋滥，车队运营视频只要是今年、车队自己官方账号发的就尽量给足（本站的排前面）。
+9. 用户意见要运营画面，或者下面列了“还缺官方运营视频的车队”时，必须逐个打开这些车队在 YouTube、X、Instagram 的官方账号，先找本站这几天发的视频（标题不写站名的 Vlog、幕后也算，看发布日期），没有就找今年别站的运营视频、车队日常视频、开发宣传视频；searched 里写你实际查过的账号（平台＋账号名）。
+只输出符合 schema 的 JSON。"""
+
+RACE_RULES = """
+
+本期讲的是 {season} 年{name_zh}（{season} {event}）。比赛实况、F1 官方运营视频、举办方视频必须是这一站这一年的；车队官方运营视频今年的都行、本站的优先；别的年份的一条都不要：
+- 比赛实况：YouTube 上 FORMULA 1 官方频道发布的本站集锦，赛段和本期类型对应（正赛复盘找正赛集锦），文案讲到排位、冲刺的关键点时才找对应赛段的集锦。
+- 车队运营视频：各车队官方在 YouTube、X、Instagram 发的幕后、车库、无线电、Vlog 之类，文案讲到哪支车队就找哪支；本站的优先，没有就用这支车队今年别站的运营视频、日常视频、车辆开发宣传视频。
+- 本站的 F1 官方运营视频：FORMULA 1 官方在 YouTube、X、Instagram 发的幕后、采访、无线电合集之类（不是比赛集锦）。
+- {name_zh}举办方官方账号发的赛道航拍和运营视频。
+- title 照抄原标题，要能看出是哪一站、哪一年。"""
+
+FOUND_SCHEMA = research._obj({"items": {"type": "array", "items": research._obj({
+    "url": research.STR, "title": research.STR, "channel": research.STR,
+    "segment": research.STR, "reason": research.STR})},
+    "searched": {"type": "array", "items": research.STR}})
+
+_HEAD = re.compile(r"^\s*(#{1,6})\s*(.*?)\s*$")
+_CHAR = re.compile(r"[\u4e00-\u9fffA-Za-z0-9]")
+_YT_ID = re.compile(r"^[\w-]{6,}$")
+_X_ID = re.compile(r"^\d{5,}$")
+_IG_ID = re.compile(r"^[\w-]{5,}$")
+_IG_KINDS = ("p", "reel", "reels", "tv")
+# 2026-10-14 用户定：GPT 找的链接收 YouTube、X、Instagram；F1 官网（新播放器下不了）、B 站不收
+SITES = ("youtube.com", "youtu.be", "x.com", "twitter.com", "instagram.com")
+BANNED_SITES = ("formula1.com", "bilibili.com", "b23.tv")
+_BILI_ID = re.compile(r"^(BV[0-9A-Za-z]{10}|av\d+)$", re.I)
+_TRACKING = re.compile(r"^(utm_\w+|fbclid|gclid|dclid|igshid|mc_cid|mc_eid|spm_id_from|vd_source|ref_src)$", re.I)
+_ASK_WHAT = ("素材", "画面", "镜头")
+# 2026-10-15 期 18 用户打回“减少比赛画面……去使用车队运营画面”没触发重找，补上减少、使用、换之类
+_ASK_DO = ("换成", "换掉", "换个", "换一", "更换", "替换", "重找", "重新找", "不要用", "别用", "找更好", "太少", "不够",
+           "减少", "少用", "多用", "使用", "改用", "用上", "补", "加点", "多加", "换", "不对", "不行")
+# 2026-10-15 用户定：程序先在 YouTube 官方频道搜候选，搜索词按“主体＋赛事＋动作”拼
+_ACTIONS = (("超车", "overtake"), ("超越", "overtake"), ("反超", "overtake"), ("事故", "crash"), ("撞", "crash"),
+            ("冲出", "crash"), ("进站", "pit stop"), ("杆位", "pole lap"), ("单圈", "onboard"), ("车载", "onboard"),
+            ("无线电", "team radio"))
+_CIRCUIT_WORDS = ("赛道", "航拍", "弯", "滨海湾", "街道")
+_TEAM_EN = {**{zh: en for en, zh in glossary.BUILTIN["车队"].items()},
+            **{zh: en for en, zh in asset_identity._TEAM_ZH.items()}}
+_FALLBACK_REASON = "程序搜到的官方候选（GPT 没给）"
+# 车队 YouTube 官方频道（2026-10-16 核对）；Alpine 没找到官方频道
+TEAM_YT = {"法拉利": "@Ferrari", "梅赛德斯": "@MercedesAMGF1", "迈凯伦": "@mclarenracing", "红牛": "@redbullracing",
+           "阿斯顿·马丁": "@astonmartinf1team", "威廉姆斯": "@WilliamsF1TV", "哈斯": "@HaasF1Team",
+           "Racing Bulls": "@VisaCashAppRB", "奥迪": "@AudiF1TV", "索伯": "@AudiF1TV", "凯迪拉克": "@CadillacF1TeamOfficial"}
+# 2026-10-16 用户定：先按文案每段讲的场景找画面；讲升级找工厂研发，讲可靠性找车库，只有讲比赛的段才用比赛实况
+SCENE_WORDS = {
+    "比赛": ("正赛", "排位", "冲刺", "发车", "领跑", "夺冠", "领奖台", "安全车", "退赛", "圈速", "冲线", "超车", "事故", "撞"),
+    "工厂": ("升级", "套件", "零件", "风洞", "模拟器", "工厂", "研发", "开发", "空气动力", "下压力", "新车", "底板", "前翼",
+           "尾翼", "阻力", "齿比", "调校"),
+    "车库": ("可靠性", "故障", "传感器", "喷油", "动力单元", "引擎", "变速箱", "工程师", "车库", "维修", "技师"),
+    "赛道": ("赛道", "航拍", "街道", "滨海湾"),
+}
+SCENE_LABEL = {"比赛": "比赛画面", "工厂": "工厂研发（风洞、模拟器、新零件）", "车库": "车库运营（工程师、维修、排查故障）",
+               "赛道": "赛道航拍", "运营": "车队运营"}
+# 车队频道里按场景搜的英文词
+SCENE_EN = {"工厂": ("factory", "wind tunnel", "simulator", "upgrade"), "车库": ("garage", "engineers", "behind the scenes"),
+            "运营": ("behind the scenes", "vlog"), "赛道": ("behind the scenes",), "比赛": ("behind the scenes",)}
+# 候选标题里贴合场景的词（排序用）
+SCENE_TITLE = {
+    "工厂": re.compile(r"factory|wind ?tunnel|simulat|upgrade|develop|technology cent|\bMTC\b|engineer|design|aero|CFD"
+                     r"|build|production", re.I),
+    "车库": re.compile(r"garage|engineer|mechanic|pit crew|behind the scenes|unboxed|unseen|reliab", re.I),
+    "运营": re.compile(r"behind the scenes|unboxed|unseen|vlog|paddock|interview", re.I),
+    "赛道": re.compile(r"aerial|circuit|track|lap", re.I),
+    "比赛": re.compile(r"highlights|onboard|race|qualifying", re.I),
+}
+_SENTENCE = re.compile(r"[^。！？!?；;\n]+")
+
+
+def setting(conn, key: str, default: int) -> int:
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    try:
+        return int(row["value"]) if row and row["value"] not in (None, "") else default
+    except ValueError:
+        return default
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _age(ts: str | None) -> float:
+    if not ts:
+        return 0.0
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(ts)).total_seconds()
+
+
+# ---------- 分段与画面需求 ----------
+
+def segments(script: str) -> list[dict]:
+    """有 "## 段名" 按段名切，没有就按空行分的自然段切；每段按语速估秒数和镜头数。"""
+    text = facts.strip_tags(re.sub(r"<!--.*?-->", "", script, flags=re.S))
+    parts, name, buf = [], "", []
+    headed = any((m := _HEAD.match(l)) and len(m.group(1)) == 2 for l in text.splitlines())
+    if headed:
+        for line in text.splitlines() + ["## "]:
+            m = _HEAD.match(line)
+            if m and len(m.group(1)) == 2:
+                if "\n".join(buf).strip():
+                    parts.append((name, "\n".join(buf).strip()))
+                name, buf = m.group(2), []
+            elif not m:
+                buf.append(line)
+    else:
+        body = "\n".join(l for l in text.splitlines() if not _HEAD.match(l))
+        paras = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+        parts = [(f"第{i}段", p) for i, p in enumerate(paras, 1)]
+    out = []
+    for name, body in parts:
+        flat = re.sub(r"\s+", " ", body)
+        seconds = max(1.0, len(_CHAR.findall(body)) / CHARS_PER_SECOND)
+        out.append({"name": name or "开头", "text": flat, "seconds": round(seconds, 1),
+                    "need": max(1, math.ceil(seconds / SECONDS_PER_SHOT)),
+                    "query": (f"{name}：{flat}" if headed and name else flat)[:QUERY_CHARS]})
+    return out
+
+
+def scene(text: str, branch: str | None = None) -> str:
+    """一段讲的场景：比赛 / 工厂 / 车库 / 赛道 / 运营。讲到名场面算比赛；其余按场景词出现次数，一样多按词表顺序；
+    都没有时复盘算比赛、别的分支算运营。"""
+    if _action(text):
+        return "比赛"
+    counts = {k: sum(text.count(w) for w in ws) for k, ws in SCENE_WORDS.items()}
+    best = max(counts, key=counts.get)
+    return best if counts[best] else "比赛" if branch == "复盘" else "运营"
+
+
+def describe_scenes(conn, segs: list[dict], branch: str | None = None, race: dict | None = None) -> list[dict]:
+    """给每段标场景（scene）、讲到的比赛站（gps）、能不能用比赛实况（race_ok）。讲比赛的句子（讲赛道的段是每一句）里
+    点了站名，就只算那几站的比赛实况；复盘期本站总算在内。比赛实况能用在讲比赛、讲赛道的段，复盘期除了工厂、车库段都能用。"""
+    for s in segs:
+        text = f"{s['name']} {s['text']}"
+        s["scene"] = scene(text, branch)
+        gps = []
+        for sent in _SENTENCE.findall(text):
+            if s["scene"] == "赛道" or _action(sent) or any(w in sent for w in SCENE_WORDS["比赛"]):
+                gp = asset_identity.event_name(conn, sent, race["season"] if race else None)
+                if gp and gp not in gps:
+                    gps.append(gp)
+        if race and gps and race["event"] not in gps:
+            gps.append(race["event"])
+        s["gps"] = gps
+        s["race_ok"] = (s["scene"] not in ("工厂", "车库") if race
+                        else s["scene"] in ("比赛", "赛道") or bool(gps))
+    return segs
+
+
+def _race_shot_ok(row, seg: dict) -> bool:
+    """这个素材的镜头能不能算进这一段：不是比赛实况都算；比赛实况只算进讲比赛的段，段里点了站名的只算那几站的。"""
+    if not row or not asset_identity.is_race_footage(row["category"], row["session"]):
+        return True
+    if not seg.get("race_ok", True):
+        return False
+    return not seg.get("gps") or row["gp_event"] in seg["gps"]
+
+
+# ---------- 本期已有 / 素材库 ----------
+
+def existing(conn, ep, manifest: dict) -> list[int]:
+    ids = [int(i) for i in manifest.get("asset_ids") or [] if str(i).isdigit()]
+    ids += edit.episode_assets(conn, ep["id"])
+    ids += [r[0] for r in conn.execute("SELECT DISTINCT asset_id FROM asset_uses WHERE episode_id=?", (ep["id"],))]
+    out = []
+    for aid in ids:
+        row = conn.execute("SELECT state FROM assets WHERE id=?", (aid,)).fetchone()
+        if row and row["state"] != "failed" and aid not in out:
+            out.append(aid)
+    return out
+
+
+def _local_file(row) -> Path | None:
+    try:
+        p = drive._asset_file(row)
+    except drive.DriveError:
+        return None
+    return p if p.is_file() else None
+
+
+def unused(conn, episode_id: int, exclude) -> list[int]:
+    rows = conn.execute(
+        """SELECT a.id, a.local_path, a.drive_path FROM assets a WHERE a.state='ready'
+           AND NOT EXISTS (SELECT 1 FROM asset_uses u WHERE u.asset_id=a.id AND u.episode_id IS NOT ?)
+           AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.asset_id=a.id
+                           AND d.episode_id IS NOT NULL AND d.episode_id IS NOT ?)
+           ORDER BY a.id DESC""", (episode_id, episode_id)).fetchall()
+    return [r["id"] for r in rows if r["id"] not in exclude and (r["drive_path"] or _local_file(r))]
+
+
+def _clean_idx(conn, aid: int) -> set[int]:
+    return {s["idx"] for s in assets.clean_shots(conn, aid, allow_subtitles=False)
+            if s["end_s"] - s["start_s"] >= edit.MIN_SHOT}
+
+
+def _top(conn, query: str, search) -> tuple[set, set]:
+    n = conn.execute("SELECT COUNT(*) FROM asset_shots WHERE clip_vec IS NOT NULL").fetchone()[0]
+    if not n:
+        return set(), set()
+    keys = [(h["asset_id"], h["shot_idx"]) for h in search(conn, query, limit=n)]
+    return set(keys[:math.ceil(len(keys) * TOP_SHARE)]), set(keys)
+
+
+def _fit(shots: dict, aids, top: set, indexed: set) -> float:
+    n = 0.0
+    for a in aids:
+        for i in shots[a]:
+            if (a, i) in top:
+                n += 1
+            elif (a, i) not in indexed:
+                n += TOP_SHARE
+    return n
+
+
+def _identity(conn, aid: int):
+    return conn.execute("SELECT id, title, gp_event, season, session, category FROM assets WHERE id=?",
+                        (aid,)).fetchone()
+
+
+def _same(conn, aid: int, race: dict | None) -> bool | None:
+    row = _identity(conn, aid)
+    return asset_identity.same_race(row, race) if row else None
+
+
+def _season_ops(conn, aid: int, race: dict | None) -> bool:
+    """车队官方运营素材、标题年份是本季：别站的也能用（2026-10-16 用户定）。"""
+    row = conn.execute("SELECT season, category FROM assets WHERE id=?", (aid,)).fetchone()
+    return bool(race and row and row["category"] == "车队运营" and row["season"] == race["season"])
+
+
+def _usable(conn, aid: int, race: dict | None) -> bool:
+    """复盘期能自动拿的库里素材：本站的，或今年的车队运营素材。"""
+    return bool(_same(conn, aid, race)) or _season_ops(conn, aid, race)
+
+
+def _race_ok(conn, ep, ids, race: dict) -> bool:
+    """复盘期要有本站正赛的比赛回放或集锦。"""
+    if ep["branch"] != "复盘":
+        return True
+    for aid in ids:
+        row = _identity(conn, aid)
+        if (row and asset_identity.same_race(row, race) and row["session"] == "正赛"
+                and row["category"] in ("比赛回放", "集锦")):
+            return True
+    return False
+
+
+def coverage(conn, episode_id: int, pool: list[int], segs: list[dict], *, search=None, race=None) -> dict:
+    """估算每段贴合镜头够不够；不够就从素材库没用过的素材里贪心补，最多 LIBRARY_MAX 个。给了 race 只补本站的和今年的车队运营素材。"""
+    search = search or visual_search.search
+    lib = unused(conn, episode_id, set(pool))
+    if race:
+        lib = [a for a in lib if _usable(conn, a, race)]
+    rows = {a: _identity(conn, a) for a in [*pool, *lib]}
+    # 比赛实况哪段都不能算的，库里的不拿
+    lib = [a for a in lib if any(_race_shot_ok(rows[a], s) for s in segs)]
+    shots = {a: _clean_idx(conn, a) for a in [*pool, *lib]}
+    tops = [_top(conn, s["query"], search) for s in segs]
+
+    def fit(aids, k):
+        return _fit(shots, [a for a in aids if _race_shot_ok(rows[a], segs[k])], *tops[k])
+
+    have = [fit(pool, k) for k in range(len(segs))]
+    need_total = sum(s["need"] for s in segs)
+    picked: list[int] = []
+
+    def gaps():
+        return [k for k, s in enumerate(segs) if have[k] < s["need"]]
+
+    def total_ok():
+        return sum(len(shots[a]) for a in pool + picked) >= SPARE * need_total
+
+    while (gaps() or not total_ok()) and len(picked) < LIBRARY_MAX:
+        g = gaps()
+        fits = {a: [fit([a], k) for k in range(len(segs))] for a in lib if a not in picked}
+        if not fits:
+            break
+        best = max(fits, key=lambda a: (sum(min(fits[a][k], segs[k]["need"] - have[k]) for k in g), len(shots[a])))
+        gain = sum(min(fits[best][k], segs[k]["need"] - have[k]) for k in g)
+        if gain <= 0 and (total_ok() or not shots[best]):
+            break
+        picked.append(best)
+        have = [h + f for h, f in zip(have, fits[best])]
+    return {"library": picked, "enough": bool(pool or picked) and not gaps() and total_ok(),
+            "clean_shots": sum(len(shots[a]) for a in pool + picked), "need_shots": need_total,
+            "segments": [{"name": s["name"], "need": s["need"], "have": round(h, 1)} for s, h in zip(segs, have)]}
+
+
+async def bring_local(conn, ids: list[int], fetch=None) -> tuple[list[int], list[str]]:
+    """库里挑中的素材：本地在就用；只在 Drive 上的取回本地；都不行记一句提醒。"""
+    fetch = fetch or drive.fetch_asset
+    ok, notes = [], []
+    for aid in ids:
+        row = conn.execute("SELECT id, local_path, drive_path FROM assets WHERE id=?", (aid,)).fetchone()
+        if _local_file(row):
+            ok.append(aid)
+            continue
+        try:
+            await fetch(conn, aid)
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"素材 {aid} 只在 Drive 上，取回失败：{str(e)[:200]}")
+        else:
+            ok.append(aid)
+    return ok, notes
+
+
+# ---------- 链接校验 ----------
+
+def _on(host: str, dom: str) -> bool:
+    return host == dom or host.endswith("." + dom)
+
+
+def url_problem(url: str) -> str | None:
+    """不能拿去取的链接返回原因：非 http(s)、带账号密码、IP 地址、解析到本机/内网/保留地址。"""
+    try:
+        p = urlsplit((url or "").strip())
+        host = (p.hostname or "").lower()
+        p.port
+    except ValueError:
+        return "链接格式不对"
+    if p.scheme not in ("http", "https"):
+        return "只收 http/https 链接"
+    if p.username is not None or p.password is not None:
+        return "链接里带账号密码"
+    if not host:
+        return "链接里没有网站域名"
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return "链接是 IP 地址，不收"
+    try:
+        addrs = {a[4][0] for a in socket.getaddrinfo(host, None)}
+    except (OSError, UnicodeError):
+        return "网站域名解析不了"
+    for a in addrs:
+        try:
+            ip = ipaddress.ip_address(str(a).split("%")[0])
+        except ValueError:
+            return "网站域名解析不了"
+        ip = getattr(ip, "ipv4_mapped", None) or ip
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
+                or ip.is_unspecified):
+            return "网站指向本机或内网地址，不收"
+    return None
+
+
+def site_problem(url: str) -> str | None:
+    """GPT 找的链接只收 YouTube、X、Instagram：F1 官网、B 站和别的网站返回原因；不是 http(s) 的留给 url_problem。"""
+    try:
+        p = urlsplit((url or "").strip())
+        host = (p.hostname or "").lower()
+    except ValueError:
+        return None
+    if p.scheme not in ("http", "https") or not host:
+        return None
+    if any(_on(host, d) for d in BANNED_SITES):
+        return "F1 官网、B 站的链接不收"
+    return None if any(_on(host, d) for d in SITES) else "只收 YouTube、X、Instagram 链接"
+
+
+def video_key(url: str) -> str | None:
+    """规范化成去重用的键：YouTube/B站/X/Instagram 是"平台:视频号"（不是单个视频页返回 None），其他站点是规范化后的网址。"""
+    try:
+        p = urlsplit((url or "").strip())
+        host = (p.hostname or "").lower()
+        port = p.port
+    except ValueError:
+        return None
+    if p.scheme not in ("http", "https") or not host:
+        return None
+    path = [x for x in p.path.split("/") if x]
+    if f1 := download.f1_video_id(url):
+        return f"formula1:{f1}"
+    if _on(host, "b23.tv"):
+        return f"b23:{path[0]}" if path else None
+    if _on(host, "bilibili.com"):
+        if len(path) >= 2 and path[0] == "video" and _BILI_ID.match(path[1]):
+            vid = path[1]
+            return "bilibili:" + ("BV" + vid[2:] if vid[:2].lower() == "bv" else vid.lower())
+        return None
+    if _on(host, "youtu.be") or _on(host, "youtube.com"):
+        if _on(host, "youtu.be"):
+            vid = path[0] if path else ""
+        elif path[:1] == ["watch"]:
+            vid = parse_qs(p.query).get("v", [""])[0]
+        elif len(path) >= 2 and path[0] in ("shorts", "live", "embed", "v"):
+            vid = path[1]
+        else:
+            vid = ""
+        return f"youtube:{vid}" if _YT_ID.match(vid) else None
+    if _on(host, "x.com") or _on(host, "twitter.com"):
+        # x.com/账号/status/帖子号（后面可带 /video/1）
+        return f"x:{path[2]}" if len(path) >= 3 and path[1] == "status" and _X_ID.match(path[2]) else None
+    if _on(host, "instagram.com"):
+        # instagram.com/p|reel|tv/代码，或 instagram.com/账号/p|reel/代码
+        for i in (0, 1):
+            if len(path) >= i + 2 and path[i] in _IG_KINDS and _IG_ID.match(path[i + 1]):
+                return f"instagram:{path[i + 1]}"
+        return None
+    query = urlencode([(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True) if not _TRACKING.match(k)])
+    netloc = host + (f":{port}" if port else "")
+    return f"url:{netloc}{p.path.rstrip('/') or '/'}" + (f"?{query}" if query else "")
+
+
+def known_urls(conn) -> list[str]:
+    rows = conn.execute("SELECT source_url FROM assets WHERE state!='failed' AND COALESCE(source_url,'')!='' "
+                        "UNION SELECT url FROM downloads WHERE state!='failed'").fetchall()
+    return [r[0] for r in rows]
+
+
+async def probe_video(url: str) -> dict:
+    """yt-dlp 只取元数据，不下载。"""
+    args = [str(config.YTDLP), "-J", "--no-playlist", "--skip-download", "--no-warnings"]
+    cookies = bilibili.cookie_file_for(url) or social_login.cookie_file_for(url)
+    if cookies:
+        args += ["--cookies", str(cookies)]
+    proc = await asyncio.create_subprocess_exec(*args, "--", download.ytdlp_url(url), stdout=asyncio.subprocess.PIPE,
+                                                stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), PROBE_TIMEOUT)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise RuntimeError("取视频信息超时")
+    if proc.returncode:
+        lines = err.decode(errors="replace").strip().splitlines()
+        raise RuntimeError(lines[-1] if lines else "yt-dlp 失败")
+    return json.loads(out)
+
+
+def _race_footage(f: dict, info: dict) -> bool:
+    """GPT 给的标题或 yt-dlp 拿到的标题看是比赛实况（比赛回放、集锦、车载，并且是正赛、排位、冲刺、练习）。"""
+    who = _f1_uploader(f, info) or research._text(info.get("uploader") or info.get("channel")) or f["channel"]
+    for title in (f["title"], research._text(info.get("title"))):
+        if title:
+            session = asset_identity._session(title)
+            category = asset_identity._category(title, who, info.get("duration"), session)
+            if session is None and category in ("比赛回放", "集锦"):
+                session = "正赛"
+            if asset_identity.is_race_footage(category, session):
+                return True
+    return False
+
+
+def _team_ops(f: dict, info: dict) -> bool:
+    """车队官方账号发的、不是比赛实况的视频（今年别站的也能用）。"""
+    names = [research._text(info.get(k)) for k in ("uploader", "channel")]
+    names = [n for n in names if n] or [f["channel"]]
+    return any(official_channel(n) == "车队官方" for n in names) and not _race_footage(f, info)
+
+
+def _f1_uploader(f: dict, info: dict) -> str | None:
+    """yt-dlp 拿到的上传者是 FORMULA 1 官方就返回它；yt-dlp 没给上传者才看 GPT 写的频道。"""
+    names = [research._text(info.get(k)) for k in ("uploader", "channel")]
+    names = [n for n in names if n] or [f["channel"]]
+    return next((n for n in names if asset_identity.official_f1(n)), None)
+
+
+async def screen(conn, items, *, limit: int, max_minutes: int, probe=None, race=None,
+                 race_minutes: int = DEFAULT_RACE_MAX_MINUTES, ops_minutes: int = OPS_MAX_MINUTES,
+                 season: int | None = None) -> list[dict]:
+    """GPT 找到的链接：只收 YouTube、X、Instagram，过安全检查、去重、看是不是单个视频和时长、截数量；合格的标"待下载"，
+    其余标"跳过"并写原因。比赛实况（按标题认出的比赛回放、集锦、车载）只收 F1 官方 YouTube 频道的。
+    给了 race 时按标题认是不是本站：认得出是别站的跳过，本站的（可能是完整回放）用 race_minutes 当时长上限；
+    车队官方的运营视频（不是比赛实况）今年别站的也收、时长上限 ops_minutes；不是本站的，上传年份不是本季就跳过。
+    没有 race 但给了 season 时，车队官方运营视频上传年份要是 season（2026-10-16 用户定：运营视频只用今年的）。"""
+    probe = probe or probe_video
+    known = {k for k in map(video_key, known_urls(conn)) if k}
+    out, taken = [], 0
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        f = {k: research._text(it.get(k)) for k in ("url", "title", "channel", "segment", "reason")}
+        f["state"] = "跳过"
+        f["site"] = assets.site_name(f["url"])
+        out.append(f)
+        key = video_key(f["url"])
+        # 2026-10-14 用户定：只收 YouTube、X、Instagram（F1 官网新播放器下不了，白费 token），别的网站不解析域名直接跳过
+        if site := site_problem(f["url"]):
+            f["note"] = site
+            continue
+        problem = await asyncio.to_thread(url_problem, f["url"])
+        if problem:
+            f["note"] = problem
+        elif not key:
+            f["note"] = "不是单个视频页"
+        elif key in known:
+            f["note"] = "素材库里已有或已在下载"
+        elif taken >= limit:
+            f["note"] = f"超过数量上限 {limit} 条"
+        else:
+            known.add(key)
+            try:
+                info = await probe(f["url"])
+            except Exception as e:  # noqa: BLE001
+                f["note"] = f"取不到视频信息：{str(e)[:200]}"
+                continue
+            page = research._text(info.get("webpage_url"))
+            real = video_key(page)
+            dur = info.get("duration")
+            cap = max_minutes
+            year = research._text(info.get("upload_date"))[:4]
+            ops = False
+            if not race and season and _team_ops(f, info):
+                ops, cap = True, ops_minutes
+            if race:
+                idents = [asset_identity.identify(conn, t) for t in (f["title"], research._text(info.get("title"))) if t]
+                seen = [asset_identity.same_race(i, race) for i in idents]
+                f["same_race"] = True if True in seen else False if False in seen else None
+                ops = _team_ops(f, info) and all(i["season"] in (None, race["season"]) for i in idents)
+                cap = race_minutes if f["same_race"] else ops_minutes if ops else max_minutes
+            if race and f["same_race"] is False and not ops:
+                f["note"] = "标题看不是本站本年的画面"
+            elif race and f["same_race"] is not True and year and year != str(race["season"]):
+                f["note"] = f"{year} 年发的，不是今年的视频"
+            elif not race and ops and year and year != str(season):
+                f["note"] = f"{year} 年发的车队运营视频，不是今年的"
+            elif info.get("_type") in ("playlist", "multi_video") or info.get("entries"):
+                f["note"] = "不是单个视频页（是播放列表或合集）"
+            elif page and page != f["url"] and (bad := await asyncio.to_thread(url_problem, page)):
+                f["note"] = f"跳转后的地址不收：{bad}"
+            elif page and (site := site_problem(page)):
+                f["note"] = site
+            elif real and real != key and real in known:
+                f["note"] = "素材库里已有或已在下载"
+            elif _race_footage(f, info) and not ((real or key or "").startswith("youtube:") and _f1_uploader(f, info)):
+                f["note"] = "比赛实况只收 F1 官方 YouTube 频道"
+            elif info.get("is_live") or not dur:
+                f["note"] = "取不到时长（可能是直播）"
+            elif dur > cap * 60:
+                f["note"] = f"时长 {dur / 60:.0f} 分钟，超过上限 {cap} 分钟"
+            else:
+                if real:
+                    known.add(real)
+                    f["url"] = page
+                    f["site"] = assets.site_name(page)
+                f["title"] = f["title"] or research._text(info.get("title"))
+                f["channel"] = f["channel"] or research._text(download.uploader_name(info, f["url"]))
+                f.update(state="待下载", minutes=round(dur / 60, 1))
+                taken += 1
+    return out
+
+
+# ---------- YouTube 官方候选 ----------
+
+def _gp_short(race: dict) -> str:
+    return race["event"].removesuffix(" Grand Prix").strip()
+
+
+def _action(text: str) -> str | None:
+    return next((en for zh, en in _ACTIONS if zh in text), None)
+
+
+def _teams_in(text: str, season: int) -> list[str]:
+    """段里讲到的车队（TEAM_ALIASES 的中文名）；索伯和奥迪互为别名，按年份留一个。"""
+    out = [t for t in asset_identity.TEAM_ALIASES if asset_identity.team_mentioned(t, text)]
+    if "索伯" in out and "奥迪" in out:
+        out.remove("索伯" if season >= 2026 else "奥迪")
+    return out
+
+
+def _seg_teams(segs, season: int) -> list[list[str]]:
+    """每段讲到的车队；一支都没讲到的段算整期讲到的车队（资讯、科普常整期讲一支车队，有的段只写人名）。"""
+    per = [_teams_in(f"{s['name']} {s['text']}", season) for s in segs]
+    every = list(dict.fromkeys(t for ts in per for t in ts))
+    return [ts or every for ts in per]
+
+
+def _driver_names(conn) -> dict[str, str]:
+    """中文车手名 → 英文姓：内置词典加译名表里的。"""
+    names = dict(glossary.BUILTIN["车手"])
+    if conn is not None:
+        try:
+            rows = conn.execute("SELECT original, COALESCE(approved, suggested) FROM glossary WHERE kind='车手'").fetchall()
+        except sqlite3.Error:
+            rows = []
+        names.update({r[0]: r[1] for r in rows if r[0] and r[1]})
+    return {zh: en.split()[-1] for en, zh in names.items() if zh and en.split()}
+
+
+def _drivers_in(conn, text: str) -> list[str]:
+    out = []
+    for zh, en in _driver_names(conn).items():
+        if (zh in text or re.search(rf"\b{re.escape(en)}\b", text, re.I)) and en not in out:
+            out.append(en)
+    return out
+
+
+def search_queries(conn, segs, race: dict | None, season: int | None = None) -> list[tuple[str, str]]:
+    """按段从文案拼 YouTube 搜索词（段名, 搜索词）：先本站集锦，再段里讲到的车队的运营视频（2026-10-15 用户定：
+    素材不够时多用车队运营视频），再车手、赛道，最后 F1 官方的车手反应、技术解读。没有 race（资讯、科普、前瞻）时按段的场景拼。"""
+    if not segs:
+        return []
+    if not race:
+        return _scene_queries(conn, segs, season or date.today().year)
+    season, event, short = race["season"], race["event"], _gp_short(race)
+    key = next((s for s in segs if _action(f"{s['name']} {s['text']}")), segs[0])
+    head = [(key["name"], f"{season} {event} highlights")]
+    tail = [(segs[0]["name"], f"{season} {event} drivers react"), (segs[0]["name"], f"{season} {event} tech talk")]
+    team, other = [], []
+    for s in segs:
+        text, tq, oq = f"{s['name']} {s['text']}", [], []
+        for t in _teams_in(text, race["season"]):
+            en = _TEAM_EN.get(t, t)
+            # 车队 Vlog 标题常不写站名，后两条不带站名、靠上传日期认本站
+            tq += [f"{en} {short} {season} behind the scenes", f"{en} {season} {event}", f"{en} {short} GP",
+                   f"{en} race week"]
+        act = _action(text)
+        for d in _drivers_in(conn, text):
+            oq.append(f"{d} {season} {event}")
+            if act:
+                oq.append(f"{d} {act} {season} {event}")
+        if any(w in text for w in _CIRCUIT_WORDS):
+            oq += [f"{short} Grand Prix circuit official aerial", f"{event} track guide"]
+        team.append([(s["name"], q) for q in tq])
+        other.append([(s["name"], q) for q in oq])
+    out, seen = [], set()
+
+    def add(name, q, cap=SEARCH_MAX_QUERIES):
+        if q.lower() not in seen and len(out) < cap:
+            seen.add(q.lower())
+            out.append((name, q))
+
+    for n, q in head:
+        add(n, q)
+    # 各段轮流取，免得前面的段把名额占满；给最后的通用词留位置
+    for group in (team, other):
+        for i in range(max(map(len, group), default=0)):
+            for qs in group:
+                if i < len(qs):
+                    add(*qs[i], cap=SEARCH_MAX_QUERIES - len(tail))
+    for n, q in tail:
+        add(n, q)
+    return out
+
+
+def _scene_queries(conn, segs, season: int) -> list[tuple[str, str]]:
+    """没有本站时（资讯、科普、前瞻）的搜索词：每段按场景搜讲到的车队今年的工厂、车库、幕后视频；讲比赛的句子点了站名，
+    搜 F1 官方那一站的集锦（车手加动作）。各段轮流取。"""
+    groups = []
+    for s, teams in zip(segs, _seg_teams(segs, season)):
+        text, sc, qs = f"{s['name']} {s['text']}", s.get("scene") or scene(f"{s['name']} {s['text']}"), []
+        gps = s.get("gps") or []
+        if sc == "比赛" or gps:
+            act = _action(text)
+            for gp in gps[:2]:
+                qs.append(f"{season} {gp} highlights")
+                for d in _drivers_in(conn, text)[:2]:
+                    qs.append(f"{d} {act} {season} {gp}" if act else f"{d} {season} {gp}")
+        for t in teams:
+            en = _TEAM_EN.get(t, t)
+            qs += [f"{en} {season} {w}" for w in SCENE_EN.get(sc, SCENE_EN["运营"])]
+        groups.append([(s["name"], q) for q in qs])
+    out, seen = [], set()
+    for i in range(max(map(len, groups), default=0)):
+        for qs in groups:
+            if i < len(qs) and qs[i][1].lower() not in seen and len(out) < SEARCH_MAX_QUERIES:
+                seen.add(qs[i][1].lower())
+                out.append(qs[i])
+    return out
+
+
+def team_channels(segs, race: dict | None, season: int | None = None) -> list[tuple[str, str]]:
+    """段里讲到的车队的 YouTube 官方频道上传页（段名, 网址），每支车队只列一次，记在第一个讲到它的段。"""
+    out, seen = [], set()
+    season = race["season"] if race else season or date.today().year
+    for s, teams in zip(segs, _seg_teams(segs, season) if not race else
+                        [_teams_in(f"{s['name']} {s['text']}", season) for s in segs]):
+        for t in teams:
+            handle = TEAM_YT.get(t)
+            if handle and handle not in seen:
+                seen.add(handle)
+                out.append((s["name"], f"https://www.youtube.com/{handle}/videos"))
+    return out
+
+
+async def yt_search(query: str, n: int = SEARCH_PER_QUERY) -> list[dict]:
+    """yt-dlp 搜 YouTube 只取列表（不进视频页），失败返回空。query 是频道网址时列它最近 CHANNEL_RECENT 条上传。"""
+    channel_page = query.startswith("https://")
+    target = ["--playlist-end", str(CHANNEL_RECENT), "--", query] if channel_page else ["--", f"ytsearch{n}:{query}"]
+    args = [str(config.YTDLP), "--flat-playlist", "--no-warnings", "-J", *target]
+    try:
+        proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.PIPE)
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), PROBE_TIMEOUT)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise RuntimeError("搜索超时")
+        if proc.returncode:
+            lines = err.decode(errors="replace").strip().splitlines()
+            raise RuntimeError(lines[-1] if lines else "yt-dlp 失败")
+        data = json.loads(out)
+    except Exception as e:  # noqa: BLE001
+        log.warning("找素材：YouTube 搜索失败（%s）：%s", query, e)
+        return []
+    res = []
+    # 频道上传页的条目不带频道名，用整页的
+    owner = (research._text(data.get("channel")) or research._text(data.get("uploader"))
+             if channel_page and isinstance(data, dict) else "")
+    for e in (data.get("entries") if isinstance(data, dict) else None) or []:
+        vid = str(e.get("id") or "") if isinstance(e, dict) else ""
+        if not _YT_ID.match(vid):
+            continue
+        res.append({"id": vid, "title": research._text(e.get("title")),
+                    "channel": research._text(e.get("channel")) or research._text(e.get("uploader")) or owner,
+                    "duration": e.get("duration"), "url": f"https://www.youtube.com/watch?v={vid}"})
+    return res
+
+
+def official_channel(channel: str | None, race: dict | None = None) -> str | None:
+    """官方频道的类别：F1官方、车队官方、举办方（频道名带站名和 GP / Grand Prix）；不是官方返回 None。"""
+    if asset_identity.official_f1(channel):
+        return "F1官方"
+    p = asset_identity._plain(channel)
+    if not p:
+        return None
+    if p in asset_identity._TEAMS:
+        return "车队官方"
+    short = asset_identity._plain(_gp_short(race)) if race else ""
+    if short and short in p and ("gp" in p or "grandprix" in p):
+        return "举办方"
+    return None
+
+
+async def candidates(conn, segs, race: dict | None, *, search=None, probe=None, limit_per_seg: int = 6,
+                     max_minutes: int = DEFAULT_MAX_MINUTES, ops_minutes: int = OPS_MAX_MINUTES,
+                     season: int | None = None) -> tuple[list[dict], list[dict]]:
+    """程序在 YouTube 官方频道搜候选：只留官方频道、不是别站（车队官方运营视频今年别站的也留）、时长不超、库里没有的，按段排好。
+    没有 race（资讯、科普、前瞻）时：比赛实况只留段里讲到的那几站、F1 官方的；别的视频只留 season 这一年发的。
+    返回 (候选, 车队缺口)；车队缺口是段里讲到、却没搜到它官方视频的车队 [{"segment", "team"}]。"""
+    search = search or yt_search
+    season = race["season"] if race else season or date.today().year
+    queries = search_queries(conn, segs, race, season) + team_channels(segs, race, season)
+    sem = asyncio.Semaphore(SEARCH_PARALLEL)
+
+    async def one(q):
+        async with sem:
+            try:
+                return await search(q)
+            except Exception as e:  # noqa: BLE001
+                log.warning("找素材：YouTube 搜索失败（%s）：%s", q, e)
+                return []
+
+    results = await asyncio.gather(*(one(q) for _, q in queries))
+    known = {k for k in map(video_key, known_urls(conn)) if k}
+    key_seg = {s["name"]: s.get("scene") == "比赛" or bool(s.get("gps")) or bool(_action(f"{s['name']} {s['text']}"))
+               for s in segs}
+    seg_scene = {s["name"]: s.get("scene") or "" for s in segs}
+    seg_gps = {s["name"]: s.get("gps") or [] for s in segs}
+    by_seg: dict[str, list[dict]] = {s["name"]: [] for s in segs}
+    for (seg, _), entries in zip(queries, results):
+        for e in entries if isinstance(entries, list) else []:
+            if not isinstance(e, dict):
+                continue
+            url, title = research._text(e.get("url")), research._text(e.get("title"))
+            channel, dur = research._text(e.get("channel")), e.get("duration")
+            key, kind = video_key(url), official_channel(channel, race)
+            if (not key or key in known or not kind or isinstance(dur, bool) or not isinstance(dur, (int, float))
+                    or dur <= 0):
+                continue
+            ident = asset_identity.identify(conn, title, channel, dur)
+            same = asset_identity.same_race(ident, race)
+            footage = asset_identity.is_race_footage(ident["category"], ident["session"])
+            ops = kind == "车队官方" and not footage
+            # 别站的不要（车队官方运营视频今年别站的可以）；比赛实况只收 F1 官方的
+            if dur > (ops_minutes if ops else max_minutes) * 60 or (footage and kind != "F1官方"):
+                continue
+            if race and same is False and not (ops and ident["season"] == race["season"]):
+                continue
+            if not race:
+                # 比赛实况要是段里讲到的那一站；别的视频标题写了别的年份不要，没写的下面看上传年份
+                if footage and (ident["gp_event"] not in seg_gps.get(seg, []) or ident["season"] not in (None, season)):
+                    continue
+                if not footage and ident["season"] not in (None, season):
+                    continue
+                same = True if ident["season"] == season else None
+            known.add(key)
+            by_seg.setdefault(seg, []).append({"url": url, "title": title, "channel": channel, "kind": kind,
+                                               "segment": seg, "minutes": round(dur / 60, 1), "same_race": same,
+                                               "race_footage": footage, "ops": ops})
+    # 标题认不出哪站的（如车队 Vlog“Our First Win Of 2026”其实是马来西亚）看简介：本站的留；
+    # 车队官方运营视频今年发的也留（算别站）；都不是就不要
+    unsure = sorted((c for cs in by_seg.values() for c in cs if c["same_race"] is None),
+                    key=lambda c: c["kind"] != "车队官方")[:UNSURE_MAX]
+    day = race_date(conn, race) if race else None
+
+    async def described(c):
+        async with sem:
+            if not race:
+                return await _this_year(c, season, probe or probe_video)
+            return await _described(conn, c, race, probe or probe_video, day=day)
+
+    checked = dict(zip((c["url"] for c in unsure), await asyncio.gather(*(described(c) for c in unsure))))
+    for name, cs in by_seg.items():
+        by_seg[name] = [dict(c, same_race=checked[c["url"]] == "本站" if race else True) if c["url"] in checked else c
+                        for c in cs if c["same_race"] is not None or checked.get(c["url"])]
+        if not race:
+            for c in by_seg[name]:
+                c["same_race"] = None
+    if not race:
+        by_seg = _spread(by_seg, seg_scene)
+    out = []
+    for name, cs in by_seg.items():
+        # 本站的在前；讲关键点的段比赛集锦在前，其他段运营视频在前；再按标题贴不贴合这一段的场景
+        fit = SCENE_TITLE.get(seg_scene.get(name, ""))
+        cs.sort(key=lambda c: (c["same_race"] is not True, c["race_footage"] != key_seg.get(name, False),
+                               not (fit and fit.search(c["title"]))))
+        out += cs[:limit_per_seg]
+    teams = [asset_identity.team_of({"uploader": c["channel"]}) for c in out if c["kind"] == "车队官方"]
+    gaps = [{"segment": s["name"], "team": t} for s in segs for t in _teams_in(f"{s['name']} {s['text']}", season)
+            if not any(f and asset_identity.team_mentioned(t, f) for f in teams)]
+    return out, gaps
+
+
+def _spread(by_seg: dict[str, list[dict]], seg_scene: dict[str, str]) -> dict[str, list[dict]]:
+    """同一场景的几段搜索词一样，搜到的都记在第一段：把不是比赛实况的候选按标题贴合程度在这几段里轮流分。"""
+    out = {n: [c for c in cs if c["race_footage"]] for n, cs in by_seg.items()}
+    for sc in dict.fromkeys(seg_scene.values()):
+        names = [n for n in by_seg if seg_scene.get(n) == sc]
+        fit = SCENE_TITLE.get(sc)
+        cs = [c for n in names for c in by_seg[n] if not c["race_footage"]]
+        cs.sort(key=lambda c: not (fit and fit.search(c["title"])))
+        for i, c in enumerate(cs):
+            n = names[i % len(names)]
+            out[n].append(dict(c, segment=n))
+    for n, cs in by_seg.items():   # 场景没标的段原样留着
+        if n not in seg_scene:
+            out[n] = cs
+    return out
+
+
+async def _this_year(c: dict, season: int, probe) -> str | None:
+    """标题没写年份的候选看上传年份：season 这一年发的返回 "今年"。"""
+    try:
+        info = await probe(c["url"])
+    except Exception as e:  # noqa: BLE001
+        log.warning("找素材：取候选上传日期失败（%s）：%s", c["url"], e)
+        return None
+    return "今年" if research._text(info.get("upload_date"))[:4] == str(season) else None
+
+
+def race_date(conn, race: dict) -> date | None:
+    """本站正赛日期（赛历 race_events）；查不到 None。"""
+    row = conn.execute("SELECT event_date FROM race_events WHERE season=? AND name_en=?",
+                       (race["season"], race["event"])).fetchone()
+    try:
+        return date.fromisoformat(row[0]) if row else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _near_race(upload: str, day: date | None) -> bool:
+    try:
+        up = datetime.strptime(upload[:8], "%Y%m%d").date()
+    except ValueError:
+        return False
+    return bool(day) and -RACE_DAYS_BEFORE <= (up - day).days <= RACE_DAYS_AFTER
+
+
+async def _described(conn, c: dict, race: dict, probe, *, day: date | None = None) -> str | None:
+    """取视频简介认哪站，返回 "本站" / "今年" / None。标题加简介前 600 字认出是本站（年份对不上的不算）；
+    都没写哪站时，上传日期在本站正赛前后几天内也算本站（车队 Vlog、幕后常不写站名）。
+    不是本站的车队官方运营视频（c["ops"]），今年发的返回 "今年"（2026-10-16 用户定：今年各站的都能用）。"""
+    try:
+        info = await probe(c["url"])
+    except Exception as e:  # noqa: BLE001
+        log.warning("找素材：取候选简介失败（%s）：%s", c["url"], e)
+        return None
+    text = f"{c['title']} {research._text(info.get('description'))[:600]}"
+    ident = asset_identity.identify(conn, text, c["channel"])
+    upload = research._text(info.get("upload_date"))
+    year, season_ok = upload[:4], ident.get("season") in (None, race["season"])
+    if season_ok and ident.get("gp_event") is None and _near_race(upload, day):
+        return "本站"
+    if season_ok and ident.get("gp_event") == race["event"] and (not year or year == str(race["season"])):
+        return "本站"
+    if c.get("ops") and season_ok and year == str(race["season"]):
+        return "今年"
+    return None
+
+
+def _fallback(cands: list[dict], cov: dict, segs, redo_segs) -> list[dict]:
+    """GPT 没给链接：缺画面（或用户要求换）的段各取前几条候选，都没有就各段都取。"""
+    short = {g["name"] for g in cov.get("segments") or [] if g["have"] < g["need"]}
+    want = [s["name"] for s in segs if s["name"] in short or s["name"] in redo_segs]
+
+    def take(names):
+        return [{"url": c["url"], "title": c["title"], "channel": c["channel"], "segment": n, "reason": _FALLBACK_REASON}
+                for n in names for c in [c for c in cands if c["segment"] == n][:FALLBACK_PER_SEG]]
+
+    return take(want) or take(list(dict.fromkeys(s["name"] for s in segs)))
+
+
+# ---------- GPT ----------
+
+def asks_new_material(text: str | None) -> bool:
+    """打回意见里明确要求换素材：提到素材/画面/镜头，并且说了换/重找/别用/太少之类。"""
+    t = text or ""
+    return any(w in t for w in _ASK_WHAT) and any(w in t for w in _ASK_DO)
+
+
+def named_segments(text: str | None, segs: list[dict]) -> list[str]:
+    """意见里点到的段名；段名是别的段名一部分时，只在单独出现才算。"""
+    t, out = text or "", []
+    names = [s["name"] for s in segs if s.get("name")]
+    for n in names:
+        rest = t
+        for m in names:
+            if m != n and n in m:
+                rest = rest.replace(m, "")
+        if n in rest and n not in out:
+            out.append(n)
+    return out
+
+
+def _prompt(conn, ep, segs, cov, pool, *, limit, max_minutes, feedback, redo=None, redo_segs=(), race=None,
+            race_minutes=DEFAULT_RACE_MAX_MINUTES, cands=(), gaps=(), ops_minutes=OPS_MAX_MINUTES) -> str:
+    folder = Path(ep["folder"])
+    topic = _read_text(folder / "01_资料" / "选题.md").strip() or "（无）"
+    lines = []
+    for s, c in zip(segs, cov["segments"]):
+        mark = "缺（用户要求换素材）" if s["name"] in redo_segs else "缺" if c["have"] < c["need"] else "够"
+        sc = f"场景：{SCENE_LABEL[s['scene']]}，" if s.get("scene") else ""
+        lines.append(f"- {s['name']}（{sc}约 {s['seconds']:.0f} 秒，要 {c['need']} 个镜头，现有贴合 {c['have']:.0f} 个，{mark}）"
+                     f"：{s['text'][:60]}")
+    titles = [(r["title"] or f"素材 {r['id']}") + (f"（{asset_identity.label(r)}）" if race else "")
+              for r in conn.execute(f"SELECT * FROM assets WHERE id IN ({','.join('?' * len(pool))})", pool)] if pool else []
+    parts = [
+        research.episode_context(ep),
+        f"## 选题.md\n{topic}",
+        "## 各段画面缺口\n" + ("\n".join(lines) or "（逐字稿没分出段）")]
+    if redo:
+        parts.append("## 用户打回时要求换素材\n按这条意见给标了“用户要求换素材”的段重新找画面：\n" + redo.strip())
+    parts += [
+        "## 本期现有素材\n" + ("\n".join(f"- {t}" for t in titles) or "（无）"),
+        "## 已有链接（不要重复）\n" + ("\n".join(f"- {u}" for u in known_urls(conn)[-80:]) or "（无）")]
+    if cands:
+        groups: dict[str, list[str]] = {}
+        for c in cands:
+            groups.setdefault(c["segment"], []).append(
+                f"- [{c['kind']}{'' if c.get('same_race') is not False else '·今年别站'}] {c['title']} | {c['channel']}"
+                f" | {c['minutes']} 分钟 | {c['url']}")
+        parts.append("## 程序在 YouTube 官方频道搜到的候选（按段）\n"
+                     + "\n\n".join(f"### {name}\n" + "\n".join(rows) for name, rows in groups.items()))
+    if gaps:
+        by_team: dict[str, list[str]] = {}
+        for g in gaps:
+            by_team.setdefault(g["team"], []).append(g["segment"])
+        parts.append("## 还缺官方运营视频的车队（程序没搜到、本期素材里也没有）\n" + "\n".join(
+            f"- {t}：{'、'.join(dict.fromkeys(ns))}" for t, ns in by_team.items()))
+    ctx = "\n\n".join(parts)
+    instruction = INSTRUCTION.format(max_minutes=max_minutes, limit=limit, ops_minutes=ops_minutes)
+    if race:
+        instruction += RACE_RULES.format(race_minutes=race_minutes, **race)
+    prompt = prompts.assemble(ep["branch"], instruction, ctx, research.lesson_notes(conn, ep["branch"], "D2找素材"))
+    return research.with_feedback(prompt, "G2/G3", feedback)
+
+
+async def ask_gpt(conn, ep, prompt: str, *, model, effort, task_id=None, runner=None, meta=None) -> list:
+    """meta 给了就把 GPT 说查过的账号放进 meta["searched"]。"""
+    reply = Path(ep["folder"]) / "04_素材" / "_找素材" / "回复.json"   # GPT 原样回复，查问题用
+    try:
+        data = await research.ask(conn, ep, prompt, sub="04_素材", name="找素材", schema=FOUND_SCHEMA, model=model,
+                                  effort=effort, task_id=task_id, web_search=True, runner=runner)
+    except Exception as e:
+        _write_json(reply, {"error": str(e)})
+        raise
+    _write_json(reply, data)
+    if meta is not None and isinstance(data.get("searched"), list):
+        meta["searched"] = [research._text(x) for x in data["searched"] if research._text(x)][:20]
+    items = data.get("items")
+    return items if isinstance(items, list) else []
+
+
+# ---------- 主流程 ----------
+
+def _segments_of(ep) -> list[dict]:
+    segs = segments(_read_text(Path(ep["folder"]) / "02_文案" / "逐字稿.md"))
+    if not segs:
+        seconds = float(ep["target_seconds"] or 180)
+        topic = _read_text(Path(ep["folder"]) / "01_资料" / "选题.md").strip() or (ep["title"] or "")
+        segs = [{"name": "全片", "text": topic[:200], "seconds": seconds,
+                 "need": math.ceil(seconds / SECONDS_PER_SHOT), "query": topic[:QUERY_CHARS] or "F1"}]
+    return segs
+
+
+def _season(ep, race: dict | None) -> int:
+    """本期按哪一年找运营视频：复盘按本站年份，其他按期号日期的年份。"""
+    if race:
+        return race["season"]
+    try:
+        return datetime.strptime((ep["code"] or "")[:8], "%Y%m%d").year
+    except (KeyError, IndexError, TypeError, ValueError):
+        return date.today().year
+
+
+async def run(conn, ep, *, model: str, effort: str, task_id=None, feedback=None, redo=None, force=False, runner=None,
+              search=None, probe=None, fetch=None, say=None, yt=None) -> dict:
+    """force=True（网页“重跑找素材”）时不看意见措辞，一定让 GPT 重找。yt 是 YouTube 搜索（测试替身用）。"""
+    path = Path(ep["folder"]) / "04_素材" / MANIFEST
+    old = _read_json(path)
+    race = asset_identity.episode_race(conn, ep)
+    segs = describe_scenes(conn, _segments_of(ep), ep["branch"], race)
+    season = _season(ep, race)
+    if old.get("stage_run") == ep["stage_run"] and (
+            old.get("other_library") or any(f.get("state") == "下载中" for f in old.get("found") or [])):
+        return await _finish(conn, ep, path, old, segs, race, search=search, fetch=fetch)
+
+    pool = existing(conn, ep, old)
+    race_info, own_notes = {}, []
+    if race:
+        # 之前自动从库里拿的他站素材不再带着；本期下载关联的（用户贴的、GPT 找的）留着
+        linked = set(edit.episode_assets(conn, ep["id"]))
+        dropped = [a for a in pool if a not in linked and _same(conn, a, race) is False
+                   and not _season_ops(conn, a, race)]
+        pool = [a for a in pool if a not in dropped]
+        own = [a for a in unused(conn, ep["id"], set(pool)) if _same(conn, a, race)]
+        own_ok, own_notes = await bring_local(conn, own, fetch)
+        pool += own_ok
+        race_info = {"race": race, "own_race": len(own_ok), "dropped_other": dropped}
+    else:
+        # 之前自动从库里拿的比赛实况，哪段都用不上（讲到的不是那一站，或不是讲比赛的段）就不带着
+        linked = set(edit.episode_assets(conn, ep["id"]))
+        dropped = [a for a in pool if a not in linked and not any(_race_shot_ok(_identity(conn, a), x) for x in segs)]
+        pool = [a for a in pool if a not in dropped]
+        if dropped:
+            race_info = {"dropped_race_footage": dropped}
+    cov = await library._in_thread(coverage, ep["id"], pool, segs, search=search, race=race)
+    forced = force or asks_new_material(redo)
+    named = named_segments(redo, segs) if forced else []
+    redo_segs = set(named or [s["name"] for s in segs]) if forced else set()
+    from_lib, lib_notes = await bring_local(conn, cov["library"], fetch)
+    summary = {"existing": len(pool) - race_info.get("own_race", 0), "from_library": len(from_lib),
+               "library_notes": own_notes + lib_notes, "segments": cov["segments"], "gpt_called": False,
+               "gpt_found": 0, "forced_by_feedback": forced, "forced_segments": (named or ["全片"]) if forced else [],
+               **race_info}
+    pool = pool + from_lib
+    no_race_footage = bool(race) and not _race_ok(conn, ep, pool, race)
+    found: list[dict] = []
+    if forced or not cov["enough"] or no_race_footage or len(from_lib) < len(cov["library"]):
+        limit = setting(conn, "assets.auto_max", DEFAULT_MAX)
+        max_minutes = setting(conn, "assets.auto_max_minutes", DEFAULT_MAX_MINUTES)
+        race_minutes = setting(conn, "assets.same_race_max_minutes", DEFAULT_RACE_MAX_MINUTES)
+        ops_minutes = setting(conn, "assets.ops_max_minutes", OPS_MAX_MINUTES)
+        summary["gpt_called"] = True
+        cands: list[dict] = []
+        team_gaps: list[dict] = []
+        # 2026-10-16 用户定：各分支都由程序在本机搜 YouTube 官方候选（GPT 的沙箱打不开 YouTube）
+        try:
+            cands, team_gaps = await candidates(conn, segs, race, search=yt, probe=probe, max_minutes=max_minutes,
+                                                ops_minutes=ops_minutes, season=season)
+        except Exception as e:  # noqa: BLE001
+            log.warning("找素材：YouTube 官方候选没搜成：%s", e)
+        # 本期素材里已有这支车队官方视频（之前下好的搜索时被当成已知去掉了）就不算缺
+        team_gaps = _open_gaps(conn, team_gaps, pool, [])
+        summary.update(candidates=len(cands), team_gaps=team_gaps)
+        prompt = _prompt(conn, ep, segs, cov, pool, limit=limit + 4, max_minutes=max_minutes, feedback=feedback,
+                         redo=redo if forced else None, redo_segs=redo_segs, race=race, race_minutes=race_minutes,
+                         cands=cands, gaps=summary.get("team_gaps") or [], ops_minutes=ops_minutes)
+        meta: dict = {}
+        try:
+            items = await ask_gpt(conn, ep, prompt, model=model, effort=effort, task_id=task_id, runner=runner,
+                                  meta=meta)
+        except codex_runner.QuotaExhausted:
+            raise
+        except Exception as e:  # noqa: BLE001
+            if not pool and not cands:
+                raise
+            log.warning("找素材：GPT 失败，用现有素材和程序搜到的候选继续：%s", e)
+            summary["gpt_error"] = str(e)[:300]
+            items = []
+        summary["gpt_found"] = len(items)
+        if meta.get("searched"):
+            summary["searched"] = meta["searched"]
+        if not items and cands:
+            items = _fallback(cands, cov, segs, redo_segs)
+            summary["fallback"] = len(items)
+        found = await screen(conn, items, limit=limit, max_minutes=max_minutes, probe=probe, race=race,
+                             race_minutes=race_minutes, ops_minutes=ops_minutes, season=season)
+        for f in found:
+            if f["state"] == "待下载":
+                f.update(state="下载中", download_id=download.enqueue(conn, f["url"], ep["id"]))
+        n = sum(f["state"] == "下载中" for f in found)
+        if n and say:
+            who = "GPT 没给链接，程序取了官方候选" if summary.get("fallback") else "GPT 找到"
+            say(f"找素材：{who} {len(items)} 条视频，{n} 条已排进下载队列，下载入库后接着走。")
+    data = {"stage_run": ep["stage_run"], "asset_ids": pool, "found": found, "summary": summary, "since": db.now()}
+    if race:
+        data["race"] = race
+    _write_json(path, data)
+    return await _finish(conn, ep, path, data, segs, race, search=search, fetch=fetch)
+
+
+async def _finish(conn, ep, path: Path, data: dict, segs, race, *, search=None, fetch=None) -> dict:
+    _settle(conn, path, data)
+    if race and (data.get("summary") or {}).get("gpt_called"):
+        await _other_library(conn, ep, path, data, segs, race, search=search, fetch=fetch)
+    return _result(conn, path, data, race)
+
+
+async def _other_library(conn, ep, path: Path, data: dict, segs, race, *, search=None, fetch=None) -> None:
+    """GPT 找完、下载完还是没有本站画面或不够：问用户要不要用素材库里其他站的，同一轮只问一次。"""
+    s = data.setdefault("summary", {})
+    ids = list(data.get("asset_ids") or [])
+    state = data.get("other_library")
+    if state is None:
+        cov = await library._in_thread(coverage, ep["id"], ids, segs, search=search, race=race)
+        got, notes = await bring_local(conn, cov["library"], fetch)
+        ids += got
+        data["asset_ids"] = ids
+        s["segments"] = cov["segments"]
+        s["library_notes"] = s.get("library_notes", []) + notes
+        if any(_same(conn, a, race) for a in ids) and cov["enough"] and _race_ok(conn, ep, ids, race):
+            _write_json(path, data)
+            return
+        data["other_library"] = state = "ask"
+        _write_json(path, data)
+        _ask_card(conn, ep, data, race)
+    if state == "ask":
+        raise StepDeferred(POLL_SECONDS, "等你决定要不要用素材库里其他站的画面")
+    if state == "allow" and "other_added" not in s:
+        cov = await library._in_thread(coverage, ep["id"], ids, segs, search=search)
+        got, notes = await bring_local(conn, cov["library"], fetch)
+        data["asset_ids"] = ids + got
+        s.update(other_added=got, segments=cov["segments"])
+        s["library_notes"] = s.get("library_notes", []) + notes
+        _write_json(path, data)
+
+
+def _ask_card(conn, ep, data: dict, race: dict) -> None:
+    ids = data.get("asset_ids") or []
+    own = sum(bool(_same(conn, a, race)) for a in ids)
+    short = [g["name"] for g in (data.get("summary") or {}).get("segments", []) if g["have"] < g["need"]]
+    name = f"{race['season']} {race['name_zh']}"
+    if not own:
+        why = "素材库和联网都没找到本站画面"
+    elif not _race_ok(conn, ep, ids, race):
+        why = f"本站素材 {own} 条，但没有正赛的回放或集锦"
+    else:
+        why = f"本站素材 {own} 条，有的段画面不够"
+    text = (f"找素材：{name}的画面不够（{why}{'；偏少的段：' + '、'.join(short[:5]) if short else ''}）。"
+            "要不要用素材库里其他站的画面？")
+    card = {"type": "other_library", "run": data.get("stage_run"), "state": "ask", "race": name, "own": own,
+            "why": why, "short": short[:8]}
+    old = versions.find_card(conn, ep["id"], "other_library", card["run"])
+    if old:
+        versions.update_card(conn, old[0], card, text)
+    else:
+        versions.add_card(conn, ep["id"], card, text)
+    broker.publish("*", "refresh", {"episode_id": ep["id"]})
+    notify("F1 Harness · 需要你决定", f"{ep['title']}：{text}", ep["id"])
+
+
+def decide_other_library(conn, ep, decision: str) -> dict:
+    """用户在卡片上点了允许 / 不用：写进素材清单，找素材步骤下次回来时照办。"""
+    if decision not in ("allow", "deny"):
+        raise ValueError(decision)
+    path = Path(ep["folder"]) / "04_素材" / MANIFEST
+    data = _read_json(path)
+    if data.get("other_library") != "ask" or data.get("stage_run") != ep["stage_run"]:
+        raise LookupError("现在没有在问要不要用其他站的画面")
+    data.update(other_library=decision, other_library_at=db.now())
+    _write_json(path, data)
+    old = versions.find_card(conn, ep["id"], "other_library", data["stage_run"])
+    if old:
+        versions.update_card(conn, old[0], {**old[1], "state": decision})
+    broker.publish("*", "refresh", {"episode_id": ep["id"]})
+    return {"other_library": decision}
+
+
+def _settle(conn, path: Path, data: dict) -> None:
+    """等排进下载队列的视频下完、入库处理完；下好的并进本期素材。"""
+    timed_out = _age(data.get("since")) > WAIT_LIMIT
+    waiting = 0
+    for f in data.get("found") or []:
+        if f.get("state") != "下载中":
+            continue
+        row = conn.execute("SELECT state, error, asset_id, finished_at FROM downloads WHERE id=?",
+                           (f.get("download_id"),)).fetchone()
+        if not row:
+            f.update(state="下载失败", note="下载记录不见了")
+        elif row["state"] == "failed":
+            f.update(state="下载失败", note=((row["error"] or "").strip().splitlines() or ["下载失败"])[0][:300])
+        elif row["state"] == "done" and row["asset_id"]:
+            pending = any(library.needs(conn, row["asset_id"]).values())
+            if not pending or _age(row["finished_at"]) > PROCESS_WAIT or timed_out:
+                f.update(state="已下载", asset_id=row["asset_id"])
+                if pending:
+                    f["note"] = "入库处理还没做完"
+            else:
+                waiting += 1
+        elif timed_out:
+            f.update(state="超时", note="等太久还没下载完，已跳过")
+        else:
+            waiting += 1
+    if waiting:
+        _write_json(path, data)
+        raise StepDeferred(POLL_SECONDS, f"等素材下载入库（还有 {waiting} 条）")
+
+    ids = list(data.get("asset_ids") or [])
+    for f in data.get("found") or []:
+        if f.get("state") == "已下载" and f.get("asset_id") not in ids:
+            ids.append(f["asset_id"])
+    data["asset_ids"] = ids
+    _write_json(path, data)
+
+
+def _result(conn, path: Path, data: dict, race=None) -> dict:
+    ids = data.get("asset_ids") or []
+    # 每个素材带上身份，剪辑和审片好看是哪站哪年
+    data["assets"] = []
+    for aid in ids:
+        row = conn.execute("SELECT * FROM assets WHERE id=?", (aid,)).fetchone()
+        if row:
+            data["assets"].append({"id": aid, "title": row["title"], **{k: row[k] for k in asset_identity.FIELDS},
+                                   **({"same_race": asset_identity.same_race(row, race)} if race else {})})
+    _write_json(path, data)
+    if not ids:
+        raise StepNotReady("没找到能用的素材：请在素材库贴几个视频链接（YouTube、B站或官方视频页）并关联本期，下载入库后再继续")
+    found = data.get("found") or []
+    s = data.get("summary") or {}
+    out = {
+        "asset_ids": ids,
+        "existing": s.get("existing", 0),
+        "from_library": s.get("from_library", 0),
+        "gpt_called": s.get("gpt_called", False),
+        "gpt_found": s.get("gpt_found", 0),
+        "accepted": sum(f.get("state") in ("已下载", "下载失败", "超时") for f in found),
+        "downloaded": sum(f.get("state") == "已下载" for f in found),
+        "failed": [{"url": f["url"], "reason": f.get("note", "")} for f in found if f.get("state") in ("下载失败", "超时")],
+        "skipped": [{"url": f["url"], "reason": f.get("note", "")} for f in found if f.get("state") == "跳过"],
+        "notes": s.get("library_notes", []) + ([f"GPT 出错：{s['gpt_error']}"] if s.get("gpt_error") else []),
+        "short_segments": [g["name"] for g in s.get("segments", []) if g["have"] < g["need"]],
+        "forced_by_feedback": s.get("forced_by_feedback", False),
+        "forced_segments": s.get("forced_segments", []),
+        "candidates": s.get("candidates"),
+        "fallback": s.get("fallback", 0),
+        "team_gaps": _open_gaps(conn, s.get("team_gaps") or [], ids, found),
+        "searched": s.get("searched", []),
+    }
+    if race:
+        out.update(race=race, own_race=s.get("own_race", 0), dropped_other=s.get("dropped_other", []),
+                   gpt_same_race=sum(f.get("state") == "已下载" and bool(f.get("same_race")) for f in found),
+                   race_assets=sum(bool(a.get("same_race")) for a in data["assets"]),
+                   other_library=data.get("other_library"), other_added=s.get("other_added", []))
+    return out
+
+
+def _open_gaps(conn, gaps: list[dict], ids, found) -> list[dict]:
+    """车队缺口里去掉最后已经有这支车队官方视频的（GPT 找到下好的、本期素材里的）。"""
+    if not gaps:
+        return []
+    have = [f.get("channel") for f in found if f.get("state") == "已下载"]
+    for aid in ids:
+        row = conn.execute("SELECT uploader FROM assets WHERE id=?", (aid,)).fetchone()
+        have.append(row["uploader"] if row else None)
+    teams = [t for t in (asset_identity.team_of({"uploader": h}) for h in have if h) if t]
+    return [g for g in gaps if not any(asset_identity.team_mentioned(g["team"], t) for t in teams)]
+
+
+def summary_text(out: dict) -> str:
+    text = f"找素材：本期已有 {out['existing']} 条，从素材库拿了 {out['from_library']} 条"
+    if not out["gpt_called"]:
+        text += "，估算够用，没让 GPT 找。"
+    else:
+        if out.get("forced_by_feedback"):
+            text += f"；按打回意见重找（{'、'.join(out['forced_segments'][:5])}）"
+        if out.get("candidates") is not None:
+            text += f"；程序在 YouTube 官方频道搜到候选 {out['candidates']} 条"
+        if out.get("fallback"):
+            text += f"；GPT 没给链接，程序直接取了 {out['fallback']} 条官方候选，下载成功 {out['downloaded']} 条"
+        else:
+            text += f"；GPT 找到 {out['gpt_found']} 条，下载成功 {out['downloaded']} 条"
+        if out["failed"]:
+            text += f"，失败 {len(out['failed'])} 条（{out['failed'][0]['reason']}）"
+        if out["skipped"]:
+            text += f"，跳过 {len(out['skipped'])} 条"
+        text += "。"
+    if out.get("race"):
+        r = out["race"]
+        text += (f" 本期讲 {r['season']} {r['name_zh']}：素材库里本站素材 {out['own_race']} 条，"
+                 f"GPT 找到并下好本站的 {out['gpt_same_race']} 条")
+        if out["dropped_other"]:
+            text += f"，没带上之前用过的其他站素材 {len(out['dropped_other'])} 条"
+        if out["other_library"] == "allow":
+            text += f"；问过你，同意用其他站画面，从素材库补了 {len(out['other_added'])} 条"
+        elif out["other_library"] == "deny":
+            text += "；问过你，不用其他站画面，就用现有的"
+        text += "。"
+    gaps: dict[str, list[str]] = {}
+    for g in out.get("team_gaps") or []:
+        gaps.setdefault(g["team"], []).append(g["segment"])
+    if out.get("searched"):
+        text += f" GPT 查过的官方账号：{'、'.join(out['searched'][:8])}。"
+    for team, names in gaps.items():
+        text += f" {team}段（{'、'.join(dict.fromkeys(names))}）没有车队官方运营视频，用 F1 官方采访和维修区画面顶上。"
+    if out["short_segments"]:
+        text += f" 画面可能偏少的段：{'、'.join(out['short_segments'][:5])}。"
+    for n in out["notes"]:
+        text += f" {n}"
+    return text

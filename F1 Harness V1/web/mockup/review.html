@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>G3 成片终审 · 巴林正赛复盘</title>
+<style>
+:root { color-scheme: light dark; --fg:#17171a; --primary:#0053fd; --bg:#f8faff; --widget:#fcfcfe; --line:rgb(23 23 26/9%);
+  --t2:rgb(23 23 26/74%); --t3:rgb(23 23 26/54%); --fill:rgb(0 83 253/6%); --green:#2f9e6e; --red:#d94c63; --amber:#c98a1b;
+  --font:-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --fg:#e8eaf0; --primary:#5b8cff; --bg:#0d0d0e; --widget:#141416; --line:rgb(232 234 240/10%);
+  --t2:rgb(232 234 240/74%); --t3:rgb(232 234 240/54%); --fill:rgb(91 140 255/12%); --green:#55a583; --red:#e75e78; } }
+* { box-sizing: border-box; } body { margin:0; font:13.5px/1.55 var(--font); color:var(--fg); background:var(--bg); height:100vh; display:flex; flex-direction:column; }
+header { padding:12px 22px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; }
+header h1 { margin:0; font-size:15px; font-weight:600; } .code { font-size:11.5px; color:var(--t3); }
+.wrap { flex:1; display:grid; grid-template-columns: 1.6fr 1fr; min-height:0; }
+.left { padding:18px 22px; overflow-y:auto; } .right { padding:18px 22px; overflow-y:auto; border-left:1px solid var(--line); }
+.player { aspect-ratio:16/9; border-radius:8px; background:linear-gradient(135deg,#1b1f2a,#2b3245); position:relative; color:#fffa; display:grid; place-items:center; }
+.player .wm { position:absolute; left:14px; top:14px; width:34px; height:34px; border-radius:50%; background:#fff3; }
+.player .sub { position:absolute; bottom:22px; left:0; right:0; text-align:center; color:#fff; font-size:17px; text-shadow:0 1px 3px #000; }
+.player .credit { position:absolute; right:12px; bottom:8px; font-size:10px; color:#fff9; }
+.shots { display:flex; gap:3px; margin-top:10px; }
+.shots i { flex:1; height:26px; border-radius:2px; background:var(--fill); }
+.shots i.warn { background:color-mix(in srgb, var(--amber) 45%, transparent); }
+h3 { font-size:12.5px; margin:18px 0 8px; font-weight:600; }
+.score { font-size:30px; font-weight:600; } .score small { font-size:12px; color:var(--t3); font-weight:400; margin-left:6px; }
+table { width:100%; border-collapse:collapse; font-size:12.5px; } td { padding:5px 0; border-bottom:1px solid var(--line); color:var(--t2); } td:last-child { text-align:right; color:var(--fg); }
+.ok { color:var(--green); } .warn { color:var(--amber); }
+ul { margin:0; padding-left:18px; color:var(--t2); font-size:12.5px; }
+footer { padding:12px 22px; border-top:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+button { font:inherit; border:0; cursor:pointer; padding:6px 16px; border-radius:4px; }
+.primary { background:var(--primary); color:#fff; } .soft { background:var(--fill); color:var(--fg); }
+input { font:inherit; width:64px; padding:4px 8px; border-radius:4px; border:1px solid var(--line); background:none; color:var(--fg); }
+</style>
+</head>
+<body>
+<header>
+  <div><div class="code">20260930-复盘-巴林大奖赛-01 · 独立窗口，可拉大或全屏</div><h1>G3 成片终审 · 巴林正赛复盘</h1></div>
+</header>
+<div class="wrap">
+  <div class="left">
+    <div class="player"><span class="wm"></span>成片 · 4:07 · 1920×1080 30 帧<div class="sub">头哥这场是真的把巴林跑成了自家后花园</div><div class="credit">画面：F1 官方 · 言论：The Race</div></div>
+    <div class="shots" id="shots"></div>
+    <div class="code" style="margin-top:6px">每一格是一个镜头，点击跳转；黄色 = 短于 1.2 秒（仅提醒）</div>
+    <h3>复盘官方复核（G3 前重新拉取）</h3>
+    <table>
+      <tr><td>正式成绩与文案一致</td><td class="ok">一致</td></tr>
+      <tr><td>处罚（FIA 文件 2 份）与文案一致</td><td class="ok">一致</td></tr>
+    </table>
+  </div>
+  <div class="right">
+    <div class="code">AI 独立评审（gpt-6-astra · 高，另开对话）</div>
+    <div class="score">71<small>本分支基线 60 · 达标</small></div>
+    <table>
+      <tr><td>事实准确（26）</td><td>21</td></tr>
+      <tr><td>剪辑与节奏（20）</td><td>14</td></tr>
+      <tr><td>开头吸引力（17）</td><td>12</td></tr>
+      <tr><td>画面贴合度（15）</td><td>10</td></tr>
+      <tr><td>文案可听性（14）</td><td>9</td></tr>
+      <tr><td>规格合规（8）</td><td>5</td></tr>
+    </table>
+    <h3>硬检查</h3>
+    <table>
+      <tr><td>水印 / BGM / BGM 响度</td><td class="ok">通过</td></tr>
+      <tr><td>重复画面 / A-B-A-B / 未授权人声</td><td class="ok">通过</td></tr>
+      <tr><td>字幕标点 / 未审译名 / 数字核对</td><td class="ok">通过</td></tr>
+    </table>
+    <h3>提醒</h3>
+    <ul><li class="warn">2 个镜头短于 1.2 秒（1:14、2:31）</li><li>第 3 个 30 秒窗口语速 351 字/分，略低于平均</li></ul>
+  </div>
+</div>
+<footer>
+  <button class="primary">通过</button><button class="soft">打回画面</button><button class="soft">打回配音</button><button class="soft">打回文案</button>
+  <span style="margin-left:auto; color:var(--t3); font-size:12.5px">你的打分（用于校准 AI）</span><input type="number" min="0" max="100" placeholder="0–100">
+</footer>
+<script>
+document.getElementById("shots").innerHTML = Array.from({length: 48}, (_, i) => `<i class="${i === 17 || i === 33 ? "warn" : ""}"></i>`).join("");
+</script>
+</body>
+</html>

@@ -1,0 +1,223 @@
+"""总控对话：用户消息 → Codex（按这条消息选的模型和推理强度）→ 逐字推送 → 解析动作指令 → 存消息与 token。"""
+import asyncio
+import json
+import logging
+import re
+import sqlite3
+import time
+from datetime import date, datetime
+from pathlib import Path
+
+from . import calendar, config, episodes, glossary, pricing
+from .appserver import AppServer
+from .db import now
+from .events import broker
+
+log = logging.getLogger("hermes.chat")
+
+ACTION_RE = re.compile(r"```hermes-action\s*(\{.*?\})\s*```", re.S)
+
+CONDUCTOR_INSTRUCTIONS = """你是 F1 Harness 的总控，一个资深 F1 车迷兼制片人，用简体中文、口语化、简洁地和用户对话。
+你负责理解用户的指令，调度各期视频的制作。制作规范的正本在：
+- {docs}/提示词/common/公共规范.md、品牌与混音.md
+- {docs}/提示词/branches/ 下的前瞻、资讯、复盘、科普
+- {docs}/计划书/Hermes实施计划书_B1-B9_定稿.md
+需要时先读这些文件再回答，不要凭记忆编造规则或数据；不确定就直说。
+
+当用户明确要开始做一期视频、或要暂停/继续/插队/取消当前这一期时，在回复最后附一个动作块（每次最多一个）：
+```hermes-action
+{{"type": "start_episode", "branch": "资讯|前瞻|复盘|科普", "title": "简短标题", "kind": "期型或单条/合集，可省略", "gp": "前瞻/复盘写所讲那一站（中英文都行），资讯/科普省略"}}
+```
+期名里的大奖赛名由程序按赛历定：前瞻、复盘用所讲那一站；资讯、科普按日期（比赛周写本站，其余写发车区/夏休/冬歇）。
+其他 type：pause、resume、jump、cancel（不需要其他字段）。
+用户要找素材、换素材、去网上下新视频时，发 {{"type": "resource", "note": "要换哪段、换成什么画面（照用户的话写）"}}：
+程序会退回配素材与粗剪，在本机联网搜官方视频并下载。你自己没法下载视频，也不要自己跑命令、联网去找或下载素材。
+只有用户意图明确时才发动作块；信息不够就先问。动作块不会显示给用户。
+用户每条消息前面会附一行「系统信息」（用户看不到），是程序按 FastF1 官方赛历算出的今天所处时期和前后分站，以它为准。
+当前会话状态：{state}
+"""
+
+WEEKDAYS = "一二三四五六日"
+# 每条消息都附在系统信息里：已经开着的对话线程用的是旧总控说明，也要知道找素材怎么发动作
+RESOURCE_HINT = ("用户要找素材、换素材、去网上下新视频时，在回复最后附动作块 {\"type\": \"resource\", \"note\": \"要求\"}，"
+                 "由程序联网搜索下载；你不要自己跑命令或联网下载素材。")
+DUP_SECONDS = 15
+_locks: dict[int, asyncio.Lock] = {}
+_last: dict[int, tuple[str, float]] = {}
+
+
+def is_duplicate(episode_id: int, text: str, at: float | None = None) -> bool:
+    """同一个会话 DUP_SECONDS 秒内又发了一模一样的消息（连点两次发送），算重复，只处理第一条。"""
+    at = time.monotonic() if at is None else at
+    last = _last.get(episode_id)
+    if last and last[0] == text and at - last[1] < DUP_SECONDS:
+        return True
+    _last[episode_id] = (text, at)
+    return False
+
+
+def _event_brief(conn, e: dict) -> str:
+    race = next((s["start_bj"] for s in e["sessions"] if s["name"] == "Race"), None)
+    where = glossary.zh(conn, "赛道", e["location"] or "") or e["location"]
+    return f"{e['name_zh'] or e['name_en']}（{where}，正赛北京时间 {race[5:] if race else e['event_date']}）"
+
+
+def period_context(conn, today: date | None = None) -> str:
+    today = today or datetime.now(calendar.BEIJING).date()
+    head = f"今天是北京时间 {today:%Y-%m-%d} 周{WEEKDAYS[today.weekday()]}"
+    evs = [e for s in (today.year - 1, today.year, today.year + 1) for e in calendar.events(conn, s)]
+    if not evs:
+        return head + "；赛历还没载入。"
+    p = calendar.period(conn, today)
+    now_part = f"本周是 {calendar.gp_label(conn, today)} 比赛周" if p.kind == "比赛周" else f"本周处于{p.kind}"
+    nxt = next((e for e in evs if date.fromisoformat(e["event_date"]) >= today), None)
+    prev = next((e for e in reversed(evs) if date.fromisoformat(e["event_date"]) < today), None)
+    parts = [head, now_part]
+    if prev:
+        parts.append(f"上一站：第{prev['round']}站 {_event_brief(conn, prev)}")
+    if nxt:
+        parts.append(f"下一站：第{nxt['round']}站 {_event_brief(conn, nxt)}")
+    return "；".join(parts) + "。"
+
+
+def episode_label(conn, branch: str, gp_text: str | None, today: date | None = None) -> str:
+    today = today or datetime.now(calendar.BEIJING).date()
+    if not conn.execute("SELECT 1 FROM race_events LIMIT 1").fetchone():
+        return "待定"
+    return calendar.label_for(conn, branch, today, gp_text)
+
+
+def _session_dir(ep: sqlite3.Row) -> str:
+    folder = ep["folder"] or str(config.CORE / "data" / "chat")
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def add_message(conn, episode_id: int, role: str, content: str, model=None, effort=None, card=None) -> int:
+    cur = conn.execute("INSERT INTO messages(episode_id, role, content, model, effort, card, created_at) VALUES (?,?,?,?,?,?,?)",
+                       (episode_id, role, content, model, effort, json.dumps(card, ensure_ascii=False) if card else None, now()))
+    msg = {"id": cur.lastrowid, "role": role, "content": content, "model": model, "effort": effort, "card": card}
+    broker.publish(f"s{episode_id}", "message", msg)
+    return cur.lastrowid
+
+
+def apply_action(conn, episode_id: int, action: dict) -> str:
+    kind = action.get("type")
+    try:
+        if kind == "start_episode":
+            branch = action["branch"]
+            label = episode_label(conn, branch, action.get("gp") or action.get("gp_label"))
+            code = episodes.start(conn, episode_id, branch=branch, title=action.get("title") or "新一期",
+                                  gp_label=label, kind=action.get("kind"))
+            return f"已立项：{code}，进入排队。"
+        if kind == "pause":
+            episodes.pause(conn, episode_id); return "已暂停。"
+        if kind == "resume":
+            episodes.resume(conn, episode_id); return "已继续。"
+        if kind == "jump":
+            episodes.jump(conn, episode_id); return "已插队到最前。"
+        if kind == "cancel":
+            episodes.cancel(conn, episode_id); return "已取消本期。"
+        if kind == "resource":
+            return _resource(conn, episode_id, str(action.get("note") or ""))
+    except (episodes.EpisodeError, KeyError, ValueError) as e:
+        return f"动作没有执行：{e}"
+    return f"不认识的动作：{kind}"
+
+
+def _resource(conn, episode_id: int, note: str) -> str:
+    """等于网页上点“重跑找素材”；正在配素材与粗剪就先暂停再退回。"""
+    from . import steps
+    ep = episodes.get(conn, episode_id)
+    paused = ep["state"] == "配素材与粗剪"
+    if paused:
+        episodes.pause(conn, episode_id)
+    try:
+        steps.request_resource(conn, episode_id, note)
+    except episodes.EpisodeError:
+        if paused:
+            episodes.resume(conn, episode_id)
+        raise
+    return "已退回配素材与粗剪：程序会在本机联网搜官方视频并下载，素材库只用来补。"
+
+
+async def handle_user_message(conn, app: AppServer, episode_id: int, text: str, model: str, effort: str,
+                              loaded_threads: set[str]) -> None:
+    """同一个会话一轮一轮来：上一轮没回完，下一条消息排队等着，免得两轮的逐字推送搅在一起。"""
+    add_message(conn, episode_id, "user", text, model, effort)
+    async with _locks.setdefault(episode_id, asyncio.Lock()):
+        await _turn(conn, app, episode_id, text, model, effort, loaded_threads)
+
+
+async def _turn(conn, app: AppServer, episode_id: int, text: str, model: str, effort: str,
+                loaded_threads: set[str]) -> None:
+    ep = episodes.get(conn, episode_id)
+    channel = f"s{episode_id}"
+    try:
+        thread_id = ep["codex_thread_id"]
+        if not thread_id:
+            instructions = CONDUCTOR_INSTRUCTIONS.format(docs=config.DOCS_DIR, state=f"{ep['state']}（{ep['code'] or '未立项'}）")
+            thread_id = await app.start_thread(_session_dir(ep), instructions, model, effort)
+            conn.execute("UPDATE episodes SET codex_thread_id=?, updated_at=? WHERE id=?", (thread_id, now(), episode_id))
+        elif thread_id not in loaded_threads:
+            await app.resume_thread(thread_id)
+        loaded_threads.add(thread_id)
+
+        broker.publish(channel, "assistant_start", {"model": model, "effort": effort})
+        result = await app.run_turn(thread_id, f"【系统信息】{period_context(conn)}{RESOURCE_HINT}\n\n{text}", model, effort,
+                                    on_delta=lambda d: broker.publish(channel, "delta", {"text": d}))
+    except Exception as e:
+        log.exception("总控对话失败")
+        add_message(conn, episode_id, "system", f"这条消息没有处理成功：{e}")
+        broker.publish(channel, "assistant_end", {})
+        return
+
+    reply = result["text"]
+    actions = [json.loads(m) for m in ACTION_RE.findall(reply) if _is_json(m)]
+    visible = ACTION_RE.sub("", reply).strip()
+    if result["error"]:
+        visible = (visible + "\n\n" if visible else "") + f"（这一轮出错：{result['error'][:300]}）"
+    add_message(conn, episode_id, "assistant", visible, model, effort)
+    _record_usage(conn, episode_id, model, effort, result["usage"])
+    for action in actions[:1]:
+        add_message(conn, episode_id, "system", apply_action(conn, episode_id, action))
+    broker.publish(channel, "assistant_end", {})
+    broker.publish("*", "refresh", {"episode_id": episode_id})
+
+
+def _is_json(s: str) -> bool:
+    try:
+        json.loads(s)
+        return True
+    except json.JSONDecodeError:
+        return False
+
+
+def _record_usage(conn, episode_id: int, model: str, effort: str, u: dict) -> None:
+    if not u:
+        return
+    conn.execute(
+        """INSERT INTO usage(ts, episode_id, model, effort, input_tokens, cached_tokens, cache_write_tokens,
+                             output_tokens, reasoning_tokens) VALUES (?,?,?,?,?,?,?,?,?)""",
+        (now(), episode_id, model, effort, u.get("inputTokens", 0), u.get("cachedInputTokens", 0),
+         u.get("cacheWriteInputTokens", 0), u.get("outputTokens", 0), u.get("reasoningOutputTokens", 0)))
+
+
+def usage_summary(conn, where: str = "1=1", params: tuple = ()) -> dict:
+    rows = conn.execute(f"""SELECT model, SUM(input_tokens) i, SUM(cached_tokens) c, SUM(cache_write_tokens) w,
+                                   SUM(output_tokens) o, SUM(reasoning_tokens) r FROM usage WHERE {where} GROUP BY model""",
+                        params).fetchall()
+    tot = {"input": 0, "cached": 0, "output": 0, "reasoning": 0, "usd": 0.0, "unpriced": []}
+    for r in rows:
+        tot["input"] += r["i"] or 0
+        tot["cached"] += r["c"] or 0
+        tot["output"] += r["o"] or 0
+        tot["reasoning"] += r["r"] or 0
+        usd = pricing.cost_usd(conn, r["model"], r["i"] or 0, r["c"] or 0, r["w"] or 0, r["o"] or 0)
+        if usd is None:
+            tot["unpriced"].append(r["model"])
+        else:
+            tot["usd"] += usd
+    rate = pricing.fx(conn).get("rate")
+    tot["cny"] = tot["usd"] * rate if rate else None
+    return tot

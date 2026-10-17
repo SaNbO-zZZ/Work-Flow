@@ -1,0 +1,155 @@
+{
+ "passed": false,
+ "items": [
+  {
+   "name": "水印",
+   "ok": false,
+   "hard": true,
+   "detail": "左上角(28,28) 宽 160 处水印缺失或位置/大小不对：1.0s 误差95.4/相关0.13，82.2s 误差80.7/相关-0.07，163.4s 误差67.8/相关0.03"
+  },
+  {
+   "name": "BGM 文件",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "BGM 电平",
+   "ok": false,
+   "hard": true,
+   "detail": "BGM -12.0 dB，超过 -18.0 dB"
+  },
+  {
+   "name": "真峰值",
+   "ok": false,
+   "hard": true,
+   "detail": "2.7 dBTP，超过 -1.0"
+  },
+  {
+   "name": "整体响度",
+   "ok": true,
+   "hard": false,
+   "detail": "-16.1 LUFS"
+  },
+  {
+   "name": "画面规格",
+   "ok": true,
+   "hard": true,
+   "detail": "1920×1080 30 帧 H.264"
+  },
+  {
+   "name": "音轨",
+   "ok": true,
+   "hard": true,
+   "detail": "1 条 AAC 48 kHz"
+  },
+  {
+   "name": "时长",
+   "ok": true,
+   "hard": true,
+   "detail": "成片 164.40s，时间线 164.37s"
+  },
+  {
+   "name": "字幕零标点",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "字幕时长",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "同一段画面两次",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "A-B-A",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "跨期复用",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "画面铺满",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "镜头过短",
+   "ok": false,
+   "hard": false,
+   "detail": "短于 1.2 秒：第40个镜头(111.23s)1.10s"
+  },
+  {
+   "name": "带字幕镜头",
+   "ok": true,
+   "hard": false,
+   "detail": ""
+  },
+  {
+   "name": "台标未裁",
+   "ok": true,
+   "hard": false,
+   "detail": ""
+  },
+  {
+   "name": "科普不写期数",
+   "ok": true,
+   "hard": true,
+   "detail": "前瞻分支不查"
+  },
+  {
+   "name": "前瞻缺赛道简图",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "未审译名",
+   "ok": true,
+   "hard": true,
+   "detail": ""
+  },
+  {
+   "name": "数字无[F#]或数值不符",
+   "ok": true,
+   "hard": true,
+   "detail": "13 句带数字，都有 [F#] 且数值对得上"
+  },
+  {
+   "name": "复盘成绩处罚复核",
+   "ok": true,
+   "hard": true,
+   "detail": "前瞻分支不查"
+  },
+  {
+   "name": "标题不把传闻写成事实",
+   "ok": true,
+   "hard": true,
+   "detail": "标题没有人事、升级类说法"
+  },
+  {
+   "name": "未授权人声",
+   "ok": true,
+   "hard": true,
+   "detail": "人声只有授权音色「热血解说员」的配音，素材原声已丢弃"
+  },
+  {
+   "name": "交付齐全",
+   "ok": true,
+   "hard": true,
+   "detail": "还没有 08_交付，跳过"
+  }
+ ]
+}

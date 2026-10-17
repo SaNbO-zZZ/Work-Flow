@@ -1,0 +1,53 @@
+# Paths are anchored here: hermes/data/ contains required, versioned static data.
+/data/
+/secrets/
+/.venv/
+/cache/
+/tools/models/
+/tools/bin/
+/logs/
+
+# Rebuild tools from the Swift sources; do not commit executable outputs.
+/tools/websnap
+/tools/hermes-ui
+/tools/hermes-ocr
+
+# Production files and external media stay outside Git.
+/productions/
+/素材库/
+/assets/
+/jianying/
+*.sparsebundle/
+*.app/
+*.dmg
+
+# docs/ includes text and code history only. Media attachments remain external.
+/docs/**/*.png
+/docs/**/*.jpg
+/docs/**/*.jpeg
+/docs/**/*.gif
+/docs/**/*.webp
+/docs/**/*.heic
+/docs/**/*.icns
+/docs/**/*.mp4
+/docs/**/*.mov
+/docs/**/*.mkv
+/docs/**/*.webm
+/docs/**/*.mp3
+/docs/**/*.wav
+/docs/**/*.m4a
+/docs/**/*.aac
+/docs/**/*.pdf
+/docs/**/*.zip
+
+# Runtime databases, authorization files and generated test files.
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+*.rclone.conf
+bilibili_cookies.txt
+/.pytest_cache/
+__pycache__/
+._*
